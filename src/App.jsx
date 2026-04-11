@@ -420,3 +420,23 @@ return (
 
 );
 }
+cat /mnt/user-data/outputs/TennisSub/src/App.jsx | python3 -c "
+import sys
+content = sys.stdin.read()
+# Check for any non-ASCII quotes
+import re
+bad_chars = re.findall(r'[\u201c\u201d\u2018\u2019\u300c\u300d\uff02\uff07]', content)
+print('Bad chars found:', bad_chars[:20] if bad_chars else 'None')
+print('Total length:', len(content))
+"
+{
+  "returncode" : 0,
+  "stdout" : "Bad chars found: ['「', '」']\nTotal length: 32558\n",
+  "stderr" : ""
+}
+grep -n '「\|」' /mnt/user-data/outputs/TennisSub/src/App.jsx | head -20
+{
+  "returncode" : 0,
+  "stdout" : "349:            <div style={{ fontSize: 13, color: \"#4a6fa5\", marginBottom: 20 }}>「{instructors.find(i=>i.id===confirmDelete)?.name}」を削除しますか？<br \/><span style={{ color: \"#ef9a9a\", fontSize: 12 }}>この操作は元に戻せません。<\/span><\/div>\n",
+  "stderr" : ""
+}

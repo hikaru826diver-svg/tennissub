@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { aggregate, calcPayroll, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, shortTime, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
+import { aggregate, calcPayroll, rosterStaff, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, shortTime, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
 import { DeptSelect, Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 import { exportShiftTable } from "../../excel.js";
@@ -22,9 +22,18 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
   const deptShifts = monthShifts.filter((s) => s.deptId === deptId);
   const deptReqs = data.request.filter((r) => r.deptId === deptId && r.date.startsWith(month));
 
-  const staffRows = data.staff
-    .filter((s) => (s.active !== false && (s.deptIds || []).includes(deptId)) || deptShifts.some((x) => x.staffId === s.id))
-    .sort(sortStaff);
+  const staffRows = rosterStaff(data, deptId, month);
+  const rosterId = `${deptId}|${month}`;
+  const roster = data.roster?.find((r) => r.id === rosterId) || { id: rosterId, deptId, month, staffIds: [] };
+  const [addOpen, setAddOpen] = useState(false);
+
+  const addToRoster = (ids) => save("roster", { ...roster, staffIds: [...new Set([...roster.staffIds, ...ids])] });
+  const removeFromRoster = (st) => {
+    const has = deptShifts.filter((s) => s.staffId === st.id);
+    if (has.length && !window.confirm(`${st.name} さんにはこの月のシフトが ${has.length}件 あります。シフトも削除して行を外しますか？`)) return;
+    if (has.length) remove("shift", has.map((s) => s.id));
+    save("roster", { ...roster, staffIds: roster.staffIds.filter((id) => id !== st.id) });
+  };
 
   const cellShifts = (sid, d) => deptShifts.filter((s) => s.staffId === sid && s.date === d).sort((a, b) => a.start.localeCompare(b.start));
   const cellReqs = (sid, d) => deptReqs.filter((r) => r.staffId === sid && r.date === d);
@@ -107,8 +116,11 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
             {staffRows.map((st) => (
               <tr key={st.id}>
                 <td className="sticky name-col">
-                  <b>{st.name}</b>
-                  <div className="small muted">{st.category} {yen(st.wage)}</div>
+                  <div className="row between">
+                    <b>{st.name}</b>
+                    {st.manual && <button className="btn tiny ghost" title="この月のシフト表から外す" onClick={() => removeFromRoster(st)}>✕</button>}
+                  </div>
+                  <div className="small muted">{st.category} {yen(st.wage)} {st.extra && <span className="tag">応援</span>}</div>
                 </td>
                 {days.map((d) => {
                   const sh = cellShifts(st.id, d);
@@ -128,6 +140,12 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
               </tr>
             ))}
             {!staffRows.length && <tr><td colSpan={days.length + 4} className="muted center">この部門に所属するスタッフがいません</td></tr>}
+            <tr>
+              <td className="sticky name-col add-row" colSpan={1}>
+                <button className="btn tiny primary" onClick={() => setAddOpen(true)}>＋ スタッフを追加</button>
+              </td>
+              <td colSpan={days.length + 3} className="muted small">他部門からの応援スタッフや新しいスタッフを、この月のシフト表に追加できます</td>
+            </tr>
           </tbody>
           <tfoot>
             <tr>
@@ -149,6 +167,22 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
         </table>
       </div>
 
+      {addOpen && (
+        <AddStaffModal
+          candidates={data.staff.filter((x) => x.active !== false && !staffRows.some((r) => r.id === x.id)).sort(sortStaff)}
+          depts={depts}
+          deptId={deptId}
+          settings={settings}
+          onAdd={(ids) => { addToRoster(ids); setAddOpen(false); }}
+          onCreate={async (rec, addToDept) => {
+            const st = { id: uid(), kana: "", active: true, note: "", ...rec, deptIds: addToDept ? [deptId] : [] };
+            await save("staff", st);
+            if (!addToDept) addToRoster([st.id]);
+            setAddOpen(false);
+          }}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
       {modal && (
         <ShiftModal
           {...modal}
@@ -221,6 +255,68 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
           <button key={r.id} className="btn tiny" onClick={() => setList([{ ...shiftFromRequest(r, settings), id: list[0]?.id || uid() }])}>希望どおりに設定</button>
         ))}
       </div>
+    </Modal>
+  );
+}
+
+function AddStaffModal({ candidates, depts, deptId, settings, onAdd, onCreate, onClose }) {
+  const [tab, setTab] = useState(candidates.length ? "pick" : "new");
+  const [picked, setPicked] = useState([]);
+  const [q, setQ] = useState("");
+  const [f, setF] = useState({ name: "", category: settings.categories[0] || "", wage: 1100, transport: 0, addToDept: true });
+  const deptName = (id) => depts.find((d) => d.id === id)?.name;
+  const list = candidates.filter((s) => !q || `${s.name}${s.kana || ""}`.includes(q));
+  const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const create = () => {
+    if (!f.name.trim()) return alert("氏名を入力してください");
+    onCreate({ name: f.name.trim(), category: f.category, wage: Number(f.wage) || 0, transport: Number(f.transport) || 0 }, f.addToDept);
+  };
+  return (
+    <Modal title={`${deptName(deptId)} にスタッフを追加`} onClose={onClose}
+      footer={<>
+        <button className="btn" onClick={onClose}>キャンセル</button>
+        {tab === "pick"
+          ? <button className="btn primary" disabled={!picked.length} onClick={() => onAdd(picked)}>追加（{picked.length}名）</button>
+          : <button className="btn primary" onClick={create}>登録して追加</button>}
+      </>}>
+      <div className="seg">
+        <button className={tab === "pick" ? "on" : ""} onClick={() => setTab("pick")}>登録済みスタッフから選ぶ</button>
+        <button className={tab === "new" ? "on" : ""} onClick={() => setTab("new")}>新しく登録する</button>
+      </div>
+      {tab === "pick" ? (
+        <>
+          <input placeholder="氏名で検索" value={q} onChange={(e) => setQ(e.target.value)} />
+          {!list.length ? <p className="muted">追加できるスタッフがいません。「新しく登録する」から登録してください。</p> : (
+            <div className="pick-list">
+              {list.map((s) => (
+                <label key={s.id} className="inline pick-item">
+                  <input type="checkbox" checked={picked.includes(s.id)} onChange={() => toggle(s.id)} />
+                  <b>{s.name}</b>
+                  <span className="muted small">{s.category} {yen(s.wage)}</span>
+                  <span className="small">{(s.deptIds || []).map((id) => deptName(id) && <span key={id} className="tag">{deptName(id)}</span>)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="muted small">他部門のスタッフは「応援」として今月のこの部門のシフト表にだけ追加されます（所属部門は変わりません）。</p>
+        </>
+      ) : (
+        <>
+          <div className="grid2">
+            <label>氏名 *<input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></label>
+            <label>区分
+              <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
+                <option value="">-</option>
+                {settings.categories.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </label>
+            <label>時給（円）<input type="number" min="0" step="10" value={f.wage} onChange={(e) => setF({ ...f, wage: e.target.value })} /></label>
+            <label>交通費（円／出勤1日）<input type="number" min="0" step="10" value={f.transport} onChange={(e) => setF({ ...f, transport: e.target.value })} /></label>
+          </div>
+          <label className="inline"><input type="checkbox" checked={f.addToDept} onChange={(e) => setF({ ...f, addToDept: e.target.checked })} />この部門の所属スタッフとしてマスタに登録する（外すと今月の応援扱い）</label>
+          <p className="muted small">フリガナ・備考などはあとで「スタッフマスタ」から編集できます。</p>
+        </>
+      )}
     </Modal>
   );
 }

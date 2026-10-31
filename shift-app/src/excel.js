@@ -1,5 +1,5 @@
 // ===== Excel 出力（exceljs を必要時に読み込み） =====
-import { aggregate, calcPayroll, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
+import { aggregate, calcPayroll, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
 
 const THIN = { style: "thin", color: { argb: "FFBFBFBF" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
@@ -51,7 +51,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
     const shifts = monthShifts.filter((s) => s.deptId === dept.id);
     const deptPay = pay.filter((r) => r.deptId === dept.id);
     const byStaff = aggregate(deptPay, (r) => r.staffId);
-    const staff = data.staff.filter((s) => (s.active !== false && (s.deptIds || []).includes(dept.id)) || shifts.some((x) => x.staffId === s.id)).sort(sortStaff);
+    const staff = rosterStaff(data, dept.id, month);
     const lastCol = 2 + days.length + 3;
 
     ws.mergeCells(1, 1, 1, lastCol);

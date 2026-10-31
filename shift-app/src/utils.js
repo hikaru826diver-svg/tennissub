@@ -181,3 +181,17 @@ export function shiftFromRequest(r, settings) {
     fromRequestId: r.id,
   };
 }
+
+/**
+ * シフト表に表示するスタッフ
+ * = 部門所属の在籍者 ＋ 手動追加（roster）＋ その月に部門のシフトがある人
+ * 手動追加・応援の人には extra: true を付与
+ */
+export function rosterStaff(data, deptId, month) {
+  const extraIds = new Set((data.roster || []).find((r) => r.id === `${deptId}|${month}`)?.staffIds || []);
+  const shiftIds = new Set(data.shift.filter((s) => s.deptId === deptId && s.date.startsWith(month)).map((s) => s.staffId));
+  return data.staff
+    .filter((s) => (s.active !== false && (s.deptIds || []).includes(deptId)) || extraIds.has(s.id) || shiftIds.has(s.id))
+    .map((s) => ({ ...s, extra: !(s.deptIds || []).includes(deptId), manual: extraIds.has(s.id) }))
+    .sort(sortStaff);
+}

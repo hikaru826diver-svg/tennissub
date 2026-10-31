@@ -216,3 +216,8 @@ select.time { padding: 5px 4px; }
   .page { padding: 0; }
   .card { border: 0; }
 }
+
+.pick-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+.pick-item { gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; cursor: pointer; }
+.pick-item:hover { background: #f7f9fc; }
+.grid-tbl td.add-row { background: #fff; }

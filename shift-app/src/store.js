@@ -8,7 +8,8 @@ const URL = import.meta.env.VITE_SUPABASE_URL || "";
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const TABLE = "shift_records";
 const LS_KEY = "shift-app-data-v1";
-export const KINDS = ["department", "staff", "request", "shift", "setting"];
+export const KINDS = ["department", "staff", "request", "shift", "setting", "roster"];
+// roster: 部門×月ごとに手動追加したスタッフ { id:"deptId|YYYY-MM", deptId, month, staffIds:[] }
 
 const supabase = URL && KEY ? createClient(URL, KEY) : null;
 

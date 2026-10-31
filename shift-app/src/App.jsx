@@ -17,7 +17,7 @@ export default function App() {
   const store = useStore();
   const hash = useHash();
   const settings = getSettings(store.data);
-  const route = hash.replace(/^#\//, "").split("/");
+  const route = hash.replace(/^#\/?/, "").split(/[/-]/);
 
   useEffect(() => {
     document.title = `${settings.orgName} | シフト作成アプリ`;
@@ -26,13 +26,17 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a href="#/" className="brand">📅 {settings.orgName}</a>
+        <a href="#" className="brand">📅 {settings.orgName}</a>
         <nav>
-          <a href="#/staff" className={route[0] === "staff" ? "active" : ""}>シフト希望入力</a>
-          <a href="#/admin" className={route[0] === "admin" ? "active" : ""}>管理者</a>
+          <a href="#staff" className={route[0] === "staff" ? "active" : ""}>シフト希望入力</a>
+          <a href="#admin" className={route[0] === "admin" ? "active" : ""}>管理者</a>
         </nav>
       </header>
-      {store.mode === "local" && (
+      {import.meta.env.VITE_DEMO ? (
+        <div className="banner warn">
+          デモ版：サンプルデータ入りで自由に操作できます（変更はこのブラウザ内にのみ保存）。このデモ画面ではExcelのダウンロードは動作しません。管理者パスコードは「admin」です。
+        </div>
+      ) : store.mode === "local" && (
         <div className="banner warn">
           ローカル保存モード：データはこのブラウザ内にのみ保存され、他の端末とは共有されません。共有するには README の手順で Supabase を設定してください。
         </div>
@@ -54,12 +58,12 @@ export default function App() {
 function Home() {
   return (
     <main className="home">
-      <a className="home-card" href="#/staff">
+      <a className="home-card" href="#staff">
         <div className="home-icon">✍️</div>
         <h2>シフト希望入力</h2>
         <p>アルバイトスタッフの方はこちらから勤務希望を提出してください。</p>
       </a>
-      <a className="home-card" href="#/admin">
+      <a className="home-card" href="#admin">
         <div className="home-icon">🛠️</div>
         <h2>管理者画面</h2>
         <p>スタッフ登録・希望一覧・シフト作成・タイムテーブル・給与計算・Excel出力</p>

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { KINDS } from "../../store.js";
-import { daysInMonth, thisMonth, uid, weekdayOf } from "../../utils.js";
+import { thisMonth } from "../../utils.js";
 import { MonthInput } from "../../components.jsx";
+import { buildSample } from "../../sample.js";
 
 export default function Settings({ store, settings }) {
   const { data, save, remove } = store;
@@ -13,7 +14,7 @@ export default function Settings({ store, settings }) {
   const [saved, setSaved] = useState(false);
   const set = (p) => { setF((x) => ({ ...x, ...p })); setSaved(false); };
   const setCol = (p) => set({ collection: { ...f.collection, ...p } });
-  const staffUrl = `${window.location.origin}${window.location.pathname}#/staff`;
+  const staffUrl = `${window.location.origin}${window.location.pathname}#staff`;
 
   const submit = async () => {
     const patterns = f.patternsText.split(/[、,\s]+/).filter(Boolean).map((t) => {
@@ -139,26 +140,7 @@ export default function Settings({ store, settings }) {
 }
 
 async function loadSample(save) {
-  const depts = [
-    { id: uid(), name: "フロント", color: "#2f80ed", order: 0 },
-    { id: uid(), name: "ジム", color: "#27ae60", order: 1 },
-    { id: uid(), name: "プール監視", color: "#00a5a8", order: 2 },
-  ];
-  const names = [["佐藤 美咲", "学生", 1100, 300], ["鈴木 健太", "学生", 1100, 0], ["高橋 由美", "主婦・主夫", 1150, 500], ["田中 誠", "一般", 1200, 400], ["伊藤 さくら", "学生", 1100, 250], ["渡辺 隆", "シニア", 1150, 0], ["山本 葵", "一般", 1250, 600], ["中村 翔", "学生", 1100, 300]];
-  const staff = names.map(([name, category, wage, transport], i) => ({ id: uid(), name, kana: "", category, wage, transport, deptIds: [depts[i % 3].id, ...(i % 4 === 0 ? [depts[(i + 1) % 3].id] : [])], active: true, note: "" }));
-  const month = thisMonth(1);
-  const pats = [["09:00", "13:00"], ["13:00", "17:00"], ["17:00", "22:00"], ["09:00", "17:00"]];
-  const reqs = [];
-  staff.forEach((s, i) => {
-    daysInMonth(month).forEach((d, k) => {
-      if ((k + i) % 3 === 0 && weekdayOf(d) !== (i % 7)) {
-        const [start, end] = pats[(i + k) % pats.length];
-        reqs.push({ id: uid(), staffId: s.id, deptId: s.deptIds[0], date: d, start, end, note: "", submittedAt: new Date().toISOString() });
-      }
-    });
-  });
-  await save("department", depts);
-  await save("staff", staff);
-  await save("request", reqs);
-  alert(`サンプルデータを投入しました（${month} の希望 ${reqs.length}件）`);
+  const d = buildSample();
+  for (const k of ["department", "staff", "request"]) await save(k, d[k]);
+  alert(`サンプルデータを投入しました（${d.month} の希望 ${d.request.length}件）`);
 }

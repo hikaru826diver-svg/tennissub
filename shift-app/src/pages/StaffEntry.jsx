@@ -84,7 +84,7 @@ export default function StaffEntry({ store, settings }) {
     try {
       if (replaced.length) await remove("request", replaced);
       await save("request", recs);
-      localStorage.setItem(LAST_KEY, JSON.stringify({ deptId, staffId }));
+      try { localStorage.setItem(LAST_KEY, JSON.stringify({ deptId, staffId })); } catch { /* ignore */ }
       setSelected({});
       setNote("");
       setMsg({ type: "ok", text: `${recs.length}日分のシフト希望を提出しました。${replaced.length ? `（${replaced.length}件を上書き）` : ""}` });

@@ -13,15 +13,27 @@ export const KINDS = ["department", "staff", "request", "shift", "setting"];
 const supabase = URL && KEY ? createClient(URL, KEY) : null;
 
 // ---- localStorage backend ----
+let memory = null; // localStorage が使えない環境用
 function lsLoad() {
   try {
-    return JSON.parse(localStorage.getItem(LS_KEY)) || {};
+    return JSON.parse(localStorage.getItem(LS_KEY)) || memory || {};
   } catch {
-    return {};
+    return memory ? JSON.parse(JSON.stringify(memory)) : {};
   }
 }
 function lsSave(all) {
-  localStorage.setItem(LS_KEY, JSON.stringify(all));
+  memory = all;
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(all));
+  } catch {
+    /* 保存不可の環境ではメモリのみ */
+  }
+}
+/** デモ用：データが空なら初期データを投入 */
+export function seedLocal(all) {
+  const cur = lsLoad();
+  if (Object.values(cur).some((v) => v && Object.keys(v).length)) return;
+  lsSave(all);
 }
 
 const local = {

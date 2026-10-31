@@ -20,7 +20,10 @@ const TABS = [
 const AUTH_KEY = "shift-app-admin";
 
 export default function AdminApp({ store, settings, sub }) {
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === "1");
+  const [authed, setAuthed] = useState(() => {
+    if (import.meta.env.VITE_DEMO) return true;
+    try { return sessionStorage.getItem(AUTH_KEY) === "1"; } catch { return false; }
+  });
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
   const depts = [...store.data.department].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -33,7 +36,7 @@ export default function AdminApp({ store, settings, sub }) {
     const login = (e) => {
       e.preventDefault();
       if (pass === settings.adminPass) {
-        sessionStorage.setItem(AUTH_KEY, "1");
+        try { sessionStorage.setItem(AUTH_KEY, "1"); } catch { /* ignore */ }
         setAuthed(true);
       } else setErr("パスコードが違います");
     };
@@ -65,12 +68,12 @@ export default function AdminApp({ store, settings, sub }) {
     <div className="admin">
       <nav className="subnav">
         {TABS.map(([k, label]) => (
-          <a key={k} href={`#/admin/${k}`} className={sub === k ? "active" : ""}>{label}</a>
+          <a key={k} href={`#admin-${k}`} className={sub === k ? "active" : ""}>{label}</a>
         ))}
-        <button className="btn tiny ghost logout" onClick={() => { sessionStorage.removeItem(AUTH_KEY); setAuthed(false); }}>ログアウト</button>
+        <button className="btn tiny ghost logout" onClick={() => { try { sessionStorage.removeItem(AUTH_KEY); } catch { /* ignore */ } setAuthed(false); }}>ログアウト</button>
       </nav>
       {!depts.length && sub !== "depts" && sub !== "settings" && (
-        <div className="banner warn">まず「<a href="#/admin/depts">部門マスタ</a>」で部門を登録し、「<a href="#/admin/staff">スタッフマスタ</a>」でスタッフを登録してください。</div>
+        <div className="banner warn">まず「<a href="#admin-depts">部門マスタ</a>」で部門を登録し、「<a href="#admin-staff">スタッフマスタ</a>」でスタッフを登録してください。</div>
       )}
       <main className="page wide">{page}</main>
     </div>

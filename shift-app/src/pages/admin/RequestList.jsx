@@ -20,6 +20,15 @@ export default function RequestList({ store, settings, depts, ctx }) {
     [data.request, ctx.month, deptFilter, dateFilter] // eslint-disable-line
   );
   const hasShift = (r) => data.shift.some((s) => s.staffId === r.staffId && s.deptId === r.deptId && s.date === r.date);
+  const shiftsOf = (r) => data.shift.filter((s) => s.staffId === r.staffId && s.deptId === r.deptId && s.date === r.date);
+  /** 登録済（シフト反映済み）を解除 → 該当シフトを削除 */
+  const unadopt = (list) => {
+    const ids = [...new Set(list.flatMap((r) => shiftsOf(r).map((s) => s.id)))];
+    if (!ids.length) return;
+    const one = list.length === 1 ? `${staffMap[list[0].staffId]?.name || ""} さんの ${fmtDate(list[0].date)} ` : "";
+    if (!window.confirm(`${one}登録済のシフト ${ids.length}件 を解除しますか？\n（シフト作成ツール・タイムテーブル・給与計算からも削除されます。希望は残ります）`)) return;
+    remove("shift", ids);
+  };
   const adopt = (list) => {
     const target = list.filter((r) => !hasShift(r));
     if (!target.length) return alert("反映対象の希望はありません（すでにシフト登録済みです）");
@@ -72,7 +81,10 @@ export default function RequestList({ store, settings, depts, ctx }) {
               <div key={date} className="card date-card">
                 <div className="row between">
                   <h3 className={`wd${weekdayOf(date)}`}>{fmtDate(date)} <span className="muted small">希望者 {new Set(list.map((r) => r.staffId)).size}名</span></h3>
-                  <button className="btn tiny" onClick={() => adopt(list)}>この日を反映</button>
+                  <div className="row">
+                    <button className="btn tiny" onClick={() => adopt(list)}>この日を反映</button>
+                    {list.some(hasShift) && <button className="btn tiny ghost" onClick={() => unadopt(list)}>この日の登録を解除</button>}
+                  </div>
                 </div>
                 <table className="tbl compact">
                   <tbody>
@@ -82,7 +94,7 @@ export default function RequestList({ store, settings, depts, ctx }) {
                         <td><b>{staffMap[r.staffId]?.name || "(削除済)"}</b></td>
                         <td className="nowrap">{r.allDay ? "終日可" : `${shortTime(r.start)}〜${shortTime(r.end)}`}</td>
                         <td className="small">{r.note}</td>
-                        <td>{hasShift(r) ? <span className="tag green">登録済</span> : <button className="btn tiny" onClick={() => save("shift", shiftFromRequest(r, settings))}>反映</button>}</td>
+                        <td className="nowrap">{hasShift(r) ? <><span className="tag green">登録済</span><button className="btn tiny ghost" onClick={() => unadopt([r])}>解除</button></> : <button className="btn tiny" onClick={() => save("shift", shiftFromRequest(r, settings))}>反映</button>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -107,7 +119,7 @@ export default function RequestList({ store, settings, depts, ctx }) {
                   <td className="small nowrap">{r.submittedAt ? new Date(r.submittedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</td>
                   <td>{hasShift(r) ? <span className="tag green">登録済</span> : <span className="tag">未</span>}</td>
                   <td className="nowrap">
-                    {!hasShift(r) && <button className="btn tiny" onClick={() => save("shift", shiftFromRequest(r, settings))}>反映</button>}
+                    {hasShift(r) ? <button className="btn tiny ghost" onClick={() => unadopt([r])}>登録解除</button> : <button className="btn tiny" onClick={() => save("shift", shiftFromRequest(r, settings))}>反映</button>}
                     <button className="btn tiny danger" onClick={() => window.confirm("この希望を削除しますか？") && remove("request", r.id)}>削除</button>
                   </td>
                 </tr>

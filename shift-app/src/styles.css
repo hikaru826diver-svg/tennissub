@@ -175,7 +175,7 @@ select.time { padding: 5px 4px; }
 .grid-tbl .sticky { position: sticky; left: 0; background: #fff; z-index: 3; }
 .grid-tbl thead .sticky, .grid-tbl tfoot .sticky { background: #f7f9fc; z-index: 4; }
 .grid-tbl .name-col { min-width: 120px; max-width: 150px; text-align: left; white-space: nowrap; box-shadow: 1px 0 0 var(--line); }
-.grid-tbl td.cell { height: 44px; min-width: 38px; text-align: center; cursor: pointer; line-height: 1.15; font-size: 11px; color: var(--text) !important; }
+.grid-tbl td.cell { height: 44px; min-width: 44px; font-variant-numeric: tabular-nums; text-align: center; cursor: pointer; line-height: 1.15; font-size: 11px; color: var(--text) !important; }
 .grid-tbl td.cell:hover { outline: 2px solid var(--primary); outline-offset: -2px; }
 .grid-tbl td.cell.shift { background: var(--shift); font-weight: 600; }
 .grid-tbl td.cell.req { background: var(--req); }

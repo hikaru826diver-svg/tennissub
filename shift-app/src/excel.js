@@ -86,7 +86,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
         const list = shifts.filter((s) => s.staffId === st.id && s.date === d).sort((a, b) => a.start.localeCompare(b.start));
         const cell = ws.getCell(r, 3 + i);
         if (list.length) {
-          cell.value = list.map((s) => `${shortTime(s.start)}\n${shortTime(s.end)}`).join("\n");
+          cell.value = list.map((s) => `${s.start}\n${s.end}`).join("\n");
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lighten(dept.color, 0.75) } };
         }
       });
@@ -129,7 +129,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
     for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 1, c).font = { size: 8 };
     ws.getColumn(1).width = 14;
     ws.getColumn(2).width = 8;
-    days.forEach((_, i) => (ws.getColumn(3 + i).width = 5.6));
+    days.forEach((_, i) => (ws.getColumn(3 + i).width = 6.4));
     ws.getColumn(3 + days.length).width = 8;
     ws.getColumn(4 + days.length).width = 9;
     ws.getColumn(5 + days.length).width = 11;

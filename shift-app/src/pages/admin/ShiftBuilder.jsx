@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { aggregate, breaksText, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, shortTime, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
+import { aggregate, breaksText, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
 import { DeptSelect, Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 import { exportShiftTable } from "../../excel.js";
 
-const short = (t) => shortTime(t).replace(":00", "");
+// 時刻は "00:00" 形式で表示
+const short = (t) => t || "";
 
 export default function ShiftBuilder({ store, settings, depts, ctx }) {
   const { data, save, remove } = store;
@@ -230,16 +231,16 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
       </>}>
       {reqs.length > 0 ? (
         <div className="banner info">
-          希望：{reqs.map((r) => <span key={r.id}>{r.allDay ? "終日可" : `${shortTime(r.start)}〜${shortTime(r.end)}`}{r.note && `（${r.note}）`} </span>)}
+          希望：{reqs.map((r) => <span key={r.id}>{r.allDay ? "終日可" : `${short(r.start)}〜${short(r.end)}`}{r.note && `（${r.note}）`} </span>)}
         </div>
       ) : <div className="muted small">この日の希望は提出されていません</div>}
       {otherDept.length > 0 && (
-        <div className="banner warn">他部門シフト：{otherDept.map((s) => `${deptName(s.deptId)} ${shortTime(s.start)}〜${shortTime(s.end)}`).join("、")}</div>
+        <div className="banner warn">他部門シフト：{otherDept.map((s) => `${deptName(s.deptId)} ${short(s.start)}〜${short(s.end)}`).join("、")}</div>
       )}
       {list.map((s, i) => (
         <div key={s.id} className="row wrap shift-line">
-          <TimeSelect times={times} value={s.start} onChange={(v) => upd(i, { start: v })} />〜
-          <TimeSelect times={times} value={s.end} onChange={(v) => upd(i, { end: v })} />
+          <TimeSelect full times={times} value={s.start} onChange={(v) => upd(i, { start: v })} />〜
+          <TimeSelect full times={times} value={s.end} onChange={(v) => upd(i, { end: v })} />
           <label className="inline">休憩
             <select value={s.breakMin} onChange={(e) => {
               if (s.breaks?.length && !window.confirm("タイムテーブルで登録した休憩時間帯をクリアして、分数のみで設定しますか？")) return;
@@ -248,7 +249,7 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
               {[...new Set([0, 15, 30, 45, 60, 75, 90, 120, s.breakMin || 0])].sort((a, b) => a - b).map((m) => <option key={m} value={m}>{m}分</option>)}
             </select>
           </label>
-          {s.breaks?.length > 0 && <span className="small">（{breaksText(s.breaks)}）</span>}
+          {s.breaks?.length > 0 && <span className="small">（{breaksText(s.breaks, true)}）</span>}
           <span className="muted small">実働 {hours(toMin(s.end) - toMin(s.start) - s.breakMin)}</span>
           {toMin(s.end) - toMin(s.start) - s.breakMin > 480 && <span className="tag red">8h超</span>}
           {s.breakMin < legalBreak(toMin(s.end) - toMin(s.start)) && <span className="tag red">法定休憩不足</span>}

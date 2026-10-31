@@ -225,11 +225,11 @@ export default function StaffEntry({ store, settings }) {
   );
 }
 
-export function TimeSelect({ times, value, onChange, disabled }) {
+export function TimeSelect({ times, value, onChange, disabled, full }) {
   const list = times.includes(value) || !value ? times : [...times, value].sort();
   return (
     <select className="time" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
-      {list.map((t) => <option key={t} value={t}>{shortTime(t)}</option>)}
+      {list.map((t) => <option key={t} value={t}>{full ? t : shortTime(t)}</option>)}
     </select>
   );
 }

@@ -247,6 +247,7 @@ export function inBreak(shift, m) {
   return breakMinRanges(shift.breaks, toMin(shift.start)).some(([a, b]) => m >= a && m < b);
 }
 /** 表示用 "12:00〜13:00、15:00〜15:15" */
-export function breaksText(breaks) {
-  return (breaks || []).map((b) => `${shortTime(b.start)}〜${shortTime(b.end)}`).join("、");
+export function breaksText(breaks, full = false) {
+  const f = full ? (t) => t : shortTime;
+  return (breaks || []).map((b) => `${f(b.start)}〜${f(b.end)}`).join("、");
 }

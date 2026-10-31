@@ -1,5 +1,5 @@
 // ===== Excel 出力（exceljs を必要時に読み込み） =====
-import { aggregate, calcPayroll, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
+import { aggregate, breaksText, calcPayroll, inBreak, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
 
 const THIN = { style: "thin", color: { argb: "FFBFBFBF" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
@@ -163,7 +163,7 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
     ws.getCell(1, 1).font = { size: 14, bold: true };
     ws.getColumn(1).width = 14;
     ws.getColumn(2).width = 12;
-    ws.getColumn(3).width = 8;
+    ws.getColumn(3).width = 12;
     slots.forEach((_, i) => (ws.getColumn(C0 + i).width = 1.6));
 
     let r = 3;
@@ -191,10 +191,16 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
       for (const s of list) {
         ws.getCell(r, 1).value = staffMap[s.staffId]?.name || "";
         ws.getCell(r, 2).value = `${shortTime(s.start)}〜${shortTime(s.end)}`;
-        ws.getCell(r, 3).value = s.breakMin ? `${s.breakMin}分` : "";
+        ws.getCell(r, 3).value = s.breaks?.length ? breaksText(s.breaks) : s.breakMin ? `${s.breakMin}分` : "";
+        ws.getCell(r, 3).font = { size: 8 };
+        ws.getCell(r, 3).alignment = { wrapText: true, vertical: "middle" };
         const st = toMin(s.start), en = toMin(s.end);
         slots.forEach((m, i) => {
-          if (m >= st && m < en) ws.getCell(r, C0 + i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(dept.color) } };
+          if (m >= st && m < en) {
+            ws.getCell(r, C0 + i).fill = inBreak(s, m)
+              ? { type: "pattern", pattern: "lightUp", fgColor: { argb: argb(dept.color) }, bgColor: { argb: "FFFFFFFF" } }
+              : { type: "pattern", pattern: "solid", fgColor: { argb: argb(dept.color) } };
+          }
         });
         r++;
       }
@@ -205,7 +211,7 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
       // 人数行
       ws.getCell(r, 1).value = "人数";
       slots.forEach((m, i) => {
-        const n = list.filter((s) => m >= toMin(s.start) && m < toMin(s.end)).length;
+        const n = list.filter((s) => m >= toMin(s.start) && m < toMin(s.end) && !inBreak(s, m)).length;
         if (m % 60 === 0) {
           ws.mergeCells(r, C0 + i, r, C0 + i + 1);
           ws.mergeCells(r, C0 + i + 2, r, C0 + i + 3);

@@ -110,9 +110,13 @@ export function calcPayroll(shifts, staffMap, settings = {}) {
       let en = toMin(s.end);
       if (en <= st) en += 24 * 60; // 日跨ぎ
       const span = en - st;
-      const brk = Math.min(span, Number(s.breakMin || 0));
+      const ranges = breakMinRanges(s.breaks, st);
+      const brk = ranges.length ? Math.min(span, ranges.reduce((a, [b1, b2]) => a + overlap(st, en, b1, b2), 0)) : Math.min(span, Number(s.breakMin || 0));
       const work = span - brk;
-      const night = Math.min(work, nightMinutes(st, en));
+      // 休憩時間帯が登録されていれば深夜帯の休憩を正確に控除、なければ休憩は日中に取ったものとみなす
+      const night = ranges.length
+        ? Math.max(0, nightMinutes(st, en) - ranges.reduce((a, [b1, b2]) => a + nightMinutes(Math.max(st, b1), Math.min(en, b2)), 0))
+        : Math.min(work, nightMinutes(st, en));
       const before = worked;
       worked += work;
       const ot = Math.max(0, worked - 480) - Math.max(0, before - 480);
@@ -194,4 +198,55 @@ export function rosterStaff(data, deptId, month) {
     .filter((s) => (s.active !== false && (s.deptIds || []).includes(deptId)) || extraIds.has(s.id) || shiftIds.has(s.id))
     .map((s) => ({ ...s, extra: !(s.deptIds || []).includes(deptId), manual: extraIds.has(s.id) }))
     .sort(sortStaff);
+}
+
+// ===== 休憩時間帯 =====
+/** breaks [{start,end}] → 分の区間（シフト開始より前の時刻は翌日扱い） */
+function breakMinRanges(breaks, shiftStartMin = 0) {
+  return (breaks || []).map((b) => {
+    let a = toMin(b.start), e = toMin(b.end);
+    if (a < shiftStartMin) { a += 1440; e += 1440; }
+    if (e <= a) e += 1440;
+    return [a, e];
+  });
+}
+/** 休憩の合計分 */
+export function sumBreaks(breaks) {
+  return breakMinRanges(breaks).reduce((a, [b1, b2]) => a + (b2 - b1), 0);
+}
+/** シフト時間内に収め、重なりを結合して並べ替え */
+export function normalizeBreaks(breaks, start, end) {
+  const st = toMin(start), en = toMin(end);
+  const r = breakMinRanges(breaks, st)
+    .map(([a, b]) => [Math.max(a, st), Math.min(b, en)])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  const out = [];
+  for (const cur of r) {
+    const last = out[out.length - 1];
+    if (last && cur[0] <= last[1]) last[1] = Math.max(last[1], cur[1]);
+    else out.push([...cur]);
+  }
+  return out.map(([a, b]) => ({ start: toHHMM(a), end: toHHMM(b) }));
+}
+/** 休憩時間帯の更新（breakMin も同期） */
+export function withBreaks(shift, breaks) {
+  const b = normalizeBreaks(breaks, shift.start, shift.end);
+  return { ...shift, breaks: b, breakMin: sumBreaks(b) };
+}
+/** 指定分の休憩をシフト中央付近（15分単位）に配置 */
+export function autoPlaceBreak(shift, minutes) {
+  if (!minutes) return [];
+  const st = toMin(shift.start), en = toMin(shift.end);
+  let a = Math.round((st + (en - st) / 2 - minutes / 2) / 15) * 15;
+  a = Math.max(st, Math.min(a, en - minutes));
+  return [{ start: toHHMM(a), end: toHHMM(a + minutes) }];
+}
+/** その時刻（分）が休憩中か */
+export function inBreak(shift, m) {
+  return breakMinRanges(shift.breaks, toMin(shift.start)).some(([a, b]) => m >= a && m < b);
+}
+/** 表示用 "12:00〜13:00、15:00〜15:15" */
+export function breaksText(breaks) {
+  return (breaks || []).map((b) => `${shortTime(b.start)}〜${shortTime(b.end)}`).join("、");
 }

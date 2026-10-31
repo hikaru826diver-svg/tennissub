@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { aggregate, calcPayroll, rosterStaff, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, shortTime, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
+import { aggregate, breaksText, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, shortTime, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
 import { DeptSelect, Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 import { exportShiftTable } from "../../excel.js";
@@ -208,6 +208,8 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
   const upd = (i, p) => setList((l) => l.map((s, k) => {
     if (k !== i) return s;
     const n = { ...s, ...p };
+    // 休憩時間帯が登録済みなら勤務時間内に収めて維持、未登録なら法定休憩を自動設定
+    if (n.breaks?.length) return withBreaks(n, n.breaks);
     if (settings.autoBreak && (p.start || p.end)) n.breakMin = legalBreak(toMin(n.end) - toMin(n.start));
     return n;
   }));
@@ -239,10 +241,14 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
           <TimeSelect times={times} value={s.start} onChange={(v) => upd(i, { start: v })} />〜
           <TimeSelect times={times} value={s.end} onChange={(v) => upd(i, { end: v })} />
           <label className="inline">休憩
-            <select value={s.breakMin} onChange={(e) => setList((l) => l.map((x, k) => (k === i ? { ...x, breakMin: Number(e.target.value) } : x)))}>
-              {[0, 15, 30, 45, 60, 75, 90, 120].map((m) => <option key={m} value={m}>{m}分</option>)}
+            <select value={s.breakMin} onChange={(e) => {
+              if (s.breaks?.length && !window.confirm("タイムテーブルで登録した休憩時間帯をクリアして、分数のみで設定しますか？")) return;
+              setList((l) => l.map((x, k) => (k === i ? { ...x, breakMin: Number(e.target.value), breaks: [] } : x)));
+            }}>
+              {[...new Set([0, 15, 30, 45, 60, 75, 90, 120, s.breakMin || 0])].sort((a, b) => a - b).map((m) => <option key={m} value={m}>{m}分</option>)}
             </select>
           </label>
+          {s.breaks?.length > 0 && <span className="small">（{breaksText(s.breaks)}）</span>}
           <span className="muted small">実働 {hours(toMin(s.end) - toMin(s.start) - s.breakMin)}</span>
           {toMin(s.end) - toMin(s.start) - s.breakMin > 480 && <span className="tag red">8h超</span>}
           {s.breakMin < legalBreak(toMin(s.end) - toMin(s.start)) && <span className="tag red">法定休憩不足</span>}

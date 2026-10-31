@@ -224,3 +224,12 @@ select.time { padding: 5px 4px; }
 .date-card.empty { background: #fafbfd; }
 .date-card.empty h3 { margin-bottom: 4px; }
 .tbl tr.empty-row td { background: #fafbfd; }
+/* 休憩 */
+.sw.brk { background: repeating-linear-gradient(45deg, #fff 0 3px, #9aa7b8 3px 5px); }
+.tt td.slot.brk { background: repeating-linear-gradient(45deg, #fff 0 3px, var(--c, #9aa7b8) 3px 5px); opacity: 0.9; }
+.tt td.slot.sel { background: #f2c94c !important; }
+.tt.break-mode td.slot.on { cursor: crosshair; }
+.tt.break-mode td.slot.brk { cursor: pointer; }
+.tt.break-mode { user-select: none; }
+.tt td.clickable { cursor: pointer; }
+.tt td.clickable:hover b { color: var(--primary); text-decoration: underline; }

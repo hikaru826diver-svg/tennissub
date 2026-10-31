@@ -51,6 +51,28 @@ describe("calcPayroll", () => {
   });
 });
 
+describe("休憩時間帯", () => {
+  it("時間帯で登録した休憩を控除し breakMin と同期", async () => {
+    const { withBreaks } = await import("./utils.js");
+    const sh = withBreaks(S({ start: "09:00", end: "18:00" }), [{ start: "12:00", end: "12:30" }, { start: "12:15", end: "13:00" }, { start: "08:00", end: "08:30" }]);
+    expect(sh.breaks).toEqual([{ start: "12:00", end: "13:00" }]);
+    expect(sh.breakMin).toBe(60);
+    const [r] = calcPayroll([sh], staff);
+    expect(r.workMin).toBe(480);
+  });
+  it("深夜帯の休憩は深夜時間から控除", async () => {
+    const { withBreaks } = await import("./utils.js");
+    const sh = withBreaks(S({ start: "17:00", end: "24:00" }), [{ start: "22:00", end: "22:30" }]);
+    const [r] = calcPayroll([sh], staff);
+    expect(r.workMin).toBe(390);
+    expect(r.nightMin).toBe(90);
+  });
+  it("自動配置は中央付近", async () => {
+    const { autoPlaceBreak } = await import("./utils.js");
+    expect(autoPlaceBreak({ start: "09:00", end: "18:00" }, 60)).toEqual([{ start: "13:00", end: "14:00" }]);
+  });
+});
+
 describe("shiftFromRequest", () => {
   it("法定休憩を自動設定", () => {
     const s = shiftFromRequest({ id: "r", staffId: "a", deptId: "d", date: "2026-12-01", start: "09:00", end: "18:00" }, { autoBreak: true });

@@ -159,7 +159,7 @@ select.time { padding: 5px 4px; }
 .shift-line { padding: 8px; background: #f7f9fc; border-radius: 6px; }
 
 /* 希望一覧 */
-.date-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+.date-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; align-items: start; }
 .date-groups .card { margin: 0; }
 
 /* シフト表 */
@@ -221,3 +221,6 @@ select.time { padding: 5px 4px; }
 .pick-item { gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; cursor: pointer; }
 .pick-item:hover { background: #f7f9fc; }
 .grid-tbl td.add-row { background: #fff; }
+.date-card.empty { background: #fafbfd; }
+.date-card.empty h3 { margin-bottom: 4px; }
+.tbl tr.empty-row td { background: #fafbfd; }

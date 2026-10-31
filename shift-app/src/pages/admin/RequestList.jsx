@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { fmtDate, fmtMonth, shiftFromRequest, shortTime, weekdayOf } from "../../utils.js";
+import { daysInMonth, fmtDate, fmtMonth, shiftFromRequest, shortTime, weekdayOf } from "../../utils.js";
 import { MonthInput } from "../../components.jsx";
 
 export default function RequestList({ store, settings, depts, ctx }) {
@@ -7,6 +7,7 @@ export default function RequestList({ store, settings, depts, ctx }) {
   const [deptFilter, setDeptFilter] = useState(ctx.deptId);
   const [dateFilter, setDateFilter] = useState("");
   const [view, setView] = useState("date");
+  const [showEmpty, setShowEmpty] = useState(true);
   const staffMap = Object.fromEntries(data.staff.map((s) => [s.id, s]));
   const deptMap = Object.fromEntries(depts.map((d) => [d.id, d]));
 
@@ -38,6 +39,8 @@ export default function RequestList({ store, settings, depts, ctx }) {
 
   // 日付別グループ
   const byDate = rows.reduce((o, r) => ((o[r.date] ||= []).push(r), o), {});
+  // 表示する日付（希望者がいない日も含める）
+  const dates = showEmpty ? (dateFilter ? [dateFilter] : daysInMonth(ctx.month)) : Object.keys(byDate);
   // 未提出者
   const targetDepts = deptFilter ? [deptFilter] : depts.map((d) => d.id);
   const notSubmitted = targetDepts.map((did) => ({
@@ -61,6 +64,7 @@ export default function RequestList({ store, settings, depts, ctx }) {
           <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>一覧</button>
           <button className={view === "missing" ? "on" : ""} onClick={() => setView("missing")}>未提出者</button>
         </div>
+        {view !== "missing" && <label className="inline"><input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />希望者がいない日も表示</label>}
         <span className="muted">{rows.length}件</span>
         <button className="btn small primary" onClick={() => adopt(rows)} disabled={!rows.length}>表示中の希望をすべてシフトに反映</button>
       </div>
@@ -75,9 +79,16 @@ export default function RequestList({ store, settings, depts, ctx }) {
           ))}
         </div>
       ) : view === "date" ? (
-        Object.keys(byDate).length ? (
+        dates.length ? (
           <div className="date-groups">
-            {Object.entries(byDate).map(([date, list]) => (
+            {dates.map((date) => [date, byDate[date] || []]).map(([date, list]) => !list.length ? (
+              <div key={date} className="card date-card empty">
+                <div className="row between">
+                  <h3 className={`wd${weekdayOf(date)}`}>{fmtDate(date)} <span className="muted small">希望者 0名</span></h3>
+                </div>
+                <div className="muted small">希望者なし</div>
+              </div>
+            ) : (
               <div key={date} className="card date-card">
                 <div className="row between">
                   <h3 className={`wd${weekdayOf(date)}`}>{fmtDate(date)} <span className="muted small">希望者 {new Set(list.map((r) => r.staffId)).size}名</span></h3>
@@ -108,7 +119,12 @@ export default function RequestList({ store, settings, depts, ctx }) {
           <table className="tbl">
             <thead><tr><th>日付</th><th>部門</th><th>氏名</th><th>区分</th><th>希望時間</th><th>備考</th><th>提出日時</th><th>状態</th><th></th></tr></thead>
             <tbody>
-              {rows.map((r) => (
+              {dates.flatMap((date) => (byDate[date]?.length ? byDate[date] : [{ id: `empty-${date}`, date, empty: true }])).map((r) => r.empty ? (
+                <tr key={r.id} className="empty-row">
+                  <td className={`wd${weekdayOf(r.date)} nowrap`}>{fmtDate(r.date)}</td>
+                  <td colSpan={8} className="muted small">希望者なし</td>
+                </tr>
+              ) : (
                 <tr key={r.id}>
                   <td className={`wd${weekdayOf(r.date)} nowrap`}>{fmtDate(r.date)}</td>
                   <td>{deptMap[r.deptId]?.name || "-"}</td>
@@ -124,7 +140,7 @@ export default function RequestList({ store, settings, depts, ctx }) {
                   </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={9} className="muted center">希望はありません</td></tr>}
+              {!dates.length && <tr><td colSpan={9} className="muted center">希望はありません</td></tr>}
             </tbody>
           </table>
         </div>

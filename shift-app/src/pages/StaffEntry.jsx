@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, thisMonth, timeOptions, toMin, today, uid, weekdayOf, WEEK } from "../utils.js";
 import { CalendarPicker, MonthInput } from "../components.jsx";
+import { getSettings, usePortal } from "../store.js";
 
 const LAST_KEY = "shift-app-last-staff";
 
-export default function StaffEntry({ store, settings }) {
-  const { data, save, remove } = store;
-  const col = settings.collection;
-  const depts = [...data.department].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+export default function StaffEntry({ backend, code, onChangeFacility, onTitle }) {
+  const lastKey = `${LAST_KEY}:${code}`;
   const last = (() => {
-    try { return JSON.parse(localStorage.getItem(LAST_KEY)) || {}; } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem(lastKey)) || {}; } catch { return {}; }
   })();
-
   const [deptId, setDeptId] = useState(last.deptId || "");
   const [staffId, setStaffId] = useState(last.staffId || "");
+  const portal = usePortal(backend, code, staffId);
+  const { data } = portal;
+  const settings = getSettings(data, portal.facility);
+  const col = settings.collection;
+  const depts = [...data.department].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  useEffect(() => { if (portal.facility) onTitle?.(settings.orgName); }, [portal.facility, settings.orgName]); // eslint-disable-line
   const [month, setMonth] = useState(col.month || thisMonth(1));
   const [selected, setSelected] = useState({}); // date -> {start,end,allDay,note}
   const [defaultTime, setDefaultTime] = useState({ start: "09:00", end: "17:00" });
@@ -25,8 +29,8 @@ export default function StaffEntry({ store, settings }) {
 
   const staffList = data.staff.filter((s) => s.active !== false && (!deptId || (s.deptIds || []).includes(deptId))).sort(sortStaff);
   useEffect(() => {
-    if (staffId && !staffList.some((s) => s.id === staffId)) setStaffId("");
-  }, [deptId]); // eslint-disable-line
+    if (!portal.loading && staffId && !staffList.some((s) => s.id === staffId)) setStaffId("");
+  }, [deptId, portal.loading]); // eslint-disable-line
 
   const times = timeOptions(settings.dayStart, settings.dayEnd, settings.stepMin);
   const closed = col.open === false || (col.deadline && today() > col.deadline);
@@ -82,14 +86,13 @@ export default function StaffEntry({ store, settings }) {
     const replaced = data.request.filter((r) => r.staffId === staffId && r.deptId === deptId && selected[r.date]).map((r) => r.id);
     setSending(true);
     try {
-      if (replaced.length) await remove("request", replaced);
-      await save("request", recs);
-      try { localStorage.setItem(LAST_KEY, JSON.stringify({ deptId, staffId })); } catch { /* ignore */ }
+      await portal.submitRequests(recs, replaced);
+      try { localStorage.setItem(lastKey, JSON.stringify({ deptId, staffId })); } catch { /* ignore */ }
       setSelected({});
       setNote("");
       setMsg({ type: "ok", text: `${recs.length}日分のシフト希望を提出しました。${replaced.length ? `（${replaced.length}件を上書き）` : ""}` });
-    } catch {
-      setMsg({ type: "error", text: "送信に失敗しました。通信環境を確認して再度お試しください。" });
+    } catch (e) {
+      setMsg({ type: "error", text: `送信に失敗しました：${e.message || "通信環境を確認して再度お試しください。"}` });
     } finally {
       setSending(false);
     }
@@ -97,9 +100,24 @@ export default function StaffEntry({ store, settings }) {
 
   const deptName = (id) => data.department.find((d) => d.id === id)?.name || "-";
 
+  if (portal.loading) return <div className="center muted" style={{ padding: 40 }}>読み込み中…</div>;
+  if (!portal.facility) {
+    return (
+      <main className="page narrow">
+        <div className="card">
+          <p className="banner error">{portal.error || "施設が見つかりません。"}</p>
+          <button className="btn" onClick={onChangeFacility}>施設を選び直す</button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="page narrow">
-      <h1>シフト希望入力</h1>
+      <div className="row between wrap">
+        <h1>シフト希望入力</h1>
+        <span className="small muted">{portal.facility.name} <button className="btn tiny ghost" onClick={onChangeFacility}>施設を変更</button></span>
+      </div>
       <div className="card info">
         <div>
           <b>回収対象：</b>{col.month ? fmtMonth(col.month) : "指定なし"}
@@ -211,7 +229,7 @@ export default function StaffEntry({ store, settings }) {
                         <td>{deptName(r.deptId)}</td>
                         <td className="nowrap">{r.allDay ? "終日可" : `${shortTime(r.start)}〜${shortTime(r.end)}`}</td>
                         <td>{r.note}</td>
-                        <td>{!closed && <button className="btn tiny danger" onClick={() => window.confirm("この希望を取り消しますか？") && remove("request", r.id)}>取消</button>}</td>
+                        <td>{!closed && <button className="btn tiny danger" onClick={() => window.confirm("この希望を取り消しますか？") && portal.deleteRequest(r.id).catch((e) => setMsg({ type: "error", text: e.message }))}>取消</button>}</td>
                       </tr>
                     ))}
                   </tbody>

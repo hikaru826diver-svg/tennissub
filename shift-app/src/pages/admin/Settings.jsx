@@ -3,8 +3,9 @@ import { KINDS } from "../../store.js";
 import { thisMonth } from "../../utils.js";
 import { MonthInput } from "../../components.jsx";
 import { buildSample } from "../../sample.js";
+import { staffUrl as staffUrlOf } from "./FacilityManager.jsx";
 
-export default function Settings({ store, settings }) {
+export default function Settings({ store, settings, facility, backend }) {
   const { data, save, remove } = store;
   const [f, setF] = useState(() => ({
     ...settings,
@@ -15,7 +16,7 @@ export default function Settings({ store, settings }) {
   const [saved, setSaved] = useState(false);
   const set = (p) => { setF((x) => ({ ...x, ...p })); setSaved(false); };
   const setCol = (p) => set({ collection: { ...f.collection, ...p } });
-  const staffUrl = `${window.location.origin}${window.location.pathname}#staff`;
+  const staffUrl = staffUrlOf(facility.code);
 
   const submit = async () => {
     const patterns = f.patternsText.split(/[、,\s]+/).filter(Boolean).map((t) => {
@@ -88,7 +89,7 @@ export default function Settings({ store, settings }) {
             </select>
           </label>
           <label>スタッフ入力画面URL（LINE等で共有）
-            <div className="row"><input readOnly style={{ flex: 1, minWidth: 0 }} value={staffUrl} onFocus={(e) => e.target.select()} /><button className="btn tiny" onClick={() => navigator.clipboard?.writeText(staffUrl)}>コピー</button></div>
+            <div className="row"><input readOnly style={{ flex: 1, minWidth: 0 }} value={staffUrl} onFocus={(e) => e.target.select()} /><button className="btn tiny" onClick={() => navigator.clipboard?.writeText(staffUrl).catch(() => {})}>コピー</button></div>
           </label>
         </div>
         <label>スタッフへのお知らせ<textarea rows={2} value={f.collection.message} onChange={(e) => setCol({ message: e.target.value })} placeholder="例：12月分のシフト希望を11/20までに提出してください" /></label>
@@ -98,7 +99,7 @@ export default function Settings({ store, settings }) {
         <h3>基本設定</h3>
         <div className="grid2">
           <label>施設・組織名<input value={f.orgName} onChange={(e) => set({ orgName: e.target.value })} /></label>
-          <label>管理者パスコード<input value={f.adminPass} onChange={(e) => set({ adminPass: e.target.value })} /></label>
+          {backend.name === "local" && <label>管理者パスコード（この施設）<input value={f.adminPass} onChange={(e) => set({ adminPass: e.target.value })} /></label>}
           <label>営業開始（時）<input type="number" min="0" max="23" value={f.dayStart} onChange={(e) => set({ dayStart: e.target.value })} /></label>
           <label>営業終了（時）<input type="number" min="1" max="30" value={f.dayEnd} onChange={(e) => set({ dayEnd: e.target.value })} /></label>
           <label>時刻の選択単位
@@ -140,7 +141,7 @@ export default function Settings({ store, settings }) {
           <button className="btn small" onClick={backup}>バックアップ（JSON）をダウンロード</button>
           <label className="btn small">バックアップから復元<input type="file" accept=".json" hidden onChange={(e) => restore(e.target.files[0])} /></label>
           <button className="btn small danger" onClick={purgeOld}>古いデータを削除</button>
-          {!data.staff.length && <button className="btn small" onClick={() => loadSample(save)}>サンプルデータを投入</button>}
+          {!data.staff.length && <button className="btn small" onClick={() => loadSample(save, settings).then(() => setF((x) => ({ ...x, collection: { ...x.collection, month: thisMonth(1) } })))}>サンプルデータを投入</button>}
         </div>
         <p className="muted small">登録件数：部門 {data.department.length} ／ スタッフ {data.staff.length} ／ 希望 {data.request.length} ／ シフト {data.shift.length}</p>
       </div>
@@ -148,8 +149,10 @@ export default function Settings({ store, settings }) {
   );
 }
 
-async function loadSample(save) {
+async function loadSample(save, settings) {
   const d = buildSample();
   for (const k of ["department", "staff", "request"]) await save(k, d[k]);
-  alert(`サンプルデータを投入しました（${d.month} の希望 ${d.request.length}件）`);
+  // 希望一覧・シフト作成ですぐ確認できるよう、回収対象月をサンプルの月（翌月）に合わせる
+  await save("setting", { ...settings, collection: { ...settings.collection, month: d.month } });
+  alert(`サンプルデータを投入しました（今月・翌月の希望 ${d.request.length}件、回収対象月：${d.month}）`);
 }

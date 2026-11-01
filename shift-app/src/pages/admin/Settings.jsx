@@ -75,8 +75,8 @@ export default function Settings({ store, settings }) {
       <div className="card">
         <h3>シフト希望の回収</h3>
         <div className="grid2">
-          <label>回収対象月（空欄なら月を自由に選択）
-            <div className="row">
+          <label className="span2">回収対象月（空欄なら月を自由に選択）
+            <div className="row wrap">
               {f.collection.month ? <MonthInput value={f.collection.month} onChange={(m) => setCol({ month: m })} /> : <span className="muted">指定なし</span>}
               {f.collection.month ? <button className="btn tiny ghost" onClick={() => setCol({ month: "" })}>指定解除</button> : <button className="btn tiny" onClick={() => setCol({ month: thisMonth(1) })}>翌月を指定</button>}
             </div>
@@ -88,7 +88,7 @@ export default function Settings({ store, settings }) {
             </select>
           </label>
           <label>スタッフ入力画面URL（LINE等で共有）
-            <div className="row"><input readOnly value={staffUrl} onFocus={(e) => e.target.select()} /><button className="btn tiny" onClick={() => navigator.clipboard?.writeText(staffUrl)}>コピー</button></div>
+            <div className="row"><input readOnly style={{ flex: 1, minWidth: 0 }} value={staffUrl} onFocus={(e) => e.target.select()} /><button className="btn tiny" onClick={() => navigator.clipboard?.writeText(staffUrl)}>コピー</button></div>
           </label>
         </div>
         <label>スタッフへのお知らせ<textarea rows={2} value={f.collection.message} onChange={(e) => setCol({ message: e.target.value })} placeholder="例：12月分のシフト希望を11/20までに提出してください" /></label>

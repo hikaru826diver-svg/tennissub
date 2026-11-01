@@ -84,6 +84,33 @@ describe("業務", () => {
   });
 });
 
+describe("タイムテーブルのコピー", () => {
+  const src = { id: "s", staffId: "a", deptId: "d", date: "2026-12-01", start: "09:00", end: "17:00", breakMin: 60, breaks: [{ start: "12:00", end: "13:00" }], tasks: [{ start: "09:00", end: "10:00", label: "受付" }], memo: "鍵当番" };
+  const all = { time: true, breaks: true, tasks: true, memo: true, create: true };
+  it("シフトのない日に新規作成", async () => {
+    const { copyShiftTo } = await import("./utils.js");
+    const r = copyShiftTo(src, null, "2026-12-02", all, "n1");
+    expect(r).toMatchObject({ id: "n1", date: "2026-12-02", start: "09:00", end: "17:00", breakMin: 60, memo: "鍵当番" });
+    expect(r.tasks).toHaveLength(1);
+  });
+  it("新規作成しない設定・時間をコピーしない場合は作らない", async () => {
+    const { copyShiftTo } = await import("./utils.js");
+    expect(copyShiftTo(src, null, "2026-12-02", { ...all, create: false })).toBeNull();
+    expect(copyShiftTo(src, null, "2026-12-02", { ...all, time: false })).toBeNull();
+  });
+  it("既存シフトの時間は維持して業務・休憩をはめ込む（時間外は除外）", async () => {
+    const { copyShiftTo } = await import("./utils.js");
+    const t = { id: "t", staffId: "a", deptId: "d", date: "2026-12-03", start: "12:30", end: "17:00", breakMin: 0, memo: "既存" };
+    const r = copyShiftTo(src, t, t.date, { time: false, breaks: true, tasks: true, memo: false });
+    expect(r.id).toBe("t");
+    expect(r.start).toBe("12:30");
+    expect(r.breaks).toEqual([{ start: "12:30", end: "13:00" }]);
+    expect(r.breakMin).toBe(30);
+    expect(r.tasks).toEqual([]);
+    expect(r.memo).toBe("既存");
+  });
+});
+
 describe("shiftFromRequest", () => {
   it("法定休憩を自動設定", () => {
     const s = shiftFromRequest({ id: "r", staffId: "a", deptId: "d", date: "2026-12-01", start: "09:00", end: "18:00" }, { autoBreak: true });

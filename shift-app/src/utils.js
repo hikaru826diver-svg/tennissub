@@ -205,7 +205,8 @@ export function rosterStaff(data, deptId, month) {
 function breakMinRanges(breaks, shiftStartMin = 0) {
   return (breaks || []).map((b) => {
     let a = toMin(b.start), e = toMin(b.end);
-    if (a < shiftStartMin) { a += 1440; e += 1440; }
+    // 日跨ぎシフト（例 18:00〜翌2:00）の 0:30 などは翌日扱い。開始直前の時刻は当日のまま（範囲外として除外される）
+    if (a < shiftStartMin - 720) { a += 1440; e += 1440; }
     if (e <= a) e += 1440;
     return [a, e];
   });
@@ -288,4 +289,31 @@ export function normalizeTasks(tasks, start, end) {
 /** その時刻（分）の業務 */
 export function taskAt(shift, m) {
   return (shift.tasks || []).find((t) => m >= toMin(t.start) && m < toMin(t.end));
+}
+
+// ===== 個人タイムテーブルのコピー =====
+/**
+ * src のタイムテーブル内容を別日にコピーした結果のシフトを返す
+ * @param src     コピー元シフト
+ * @param target  コピー先の日の同一スタッフ・同一部門のシフト（なければ null）
+ * @param opts    { time, breaks, tasks, memo, create, autoBreak }
+ * @returns 保存するシフト、対象外なら null
+ */
+export function copyShiftTo(src, target, date, opts, newId = uid()) {
+  if (!target && !(opts.create && opts.time)) return null;
+  let base = target ? { ...target } : { id: newId, staffId: src.staffId, deptId: src.deptId, date, start: src.start, end: src.end, breakMin: 0, breaks: [], tasks: [], memo: "", copiedFrom: src.id };
+  if (opts.time) base = { ...base, start: src.start, end: src.end };
+  // 休憩
+  if (opts.breaks) {
+    base = src.breaks?.length ? withBreaks(base, src.breaks) : { ...base, breaks: [], breakMin: src.breakMin || 0 };
+  } else if (base.breaks?.length) {
+    base = withBreaks(base, base.breaks);
+  } else if (!target) {
+    base.breakMin = opts.autoBreak ? legalBreak(toMin(base.end) - toMin(base.start)) : 0;
+  }
+  // 業務
+  base.tasks = normalizeTasks(opts.tasks ? src.tasks : base.tasks, base.start, base.end);
+  // メモ
+  if (opts.memo) base.memo = src.memo || "";
+  return base;
 }

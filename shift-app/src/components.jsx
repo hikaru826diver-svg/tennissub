@@ -17,7 +17,7 @@ export function MonthInput({ value, onChange, disabled }) {
 }
 
 /** 月カレンダー（複数日選択） */
-export function CalendarPicker({ month, selected, marked = new Set(), onToggle }) {
+export function CalendarPicker({ month, selected, marked = new Set(), onToggle, disabledDates = new Set() }) {
   const days = daysInMonth(month);
   const lead = weekdayOf(days[0]);
   const cells = [...Array(lead).fill(null), ...days];
@@ -26,7 +26,7 @@ export function CalendarPicker({ month, selected, marked = new Set(), onToggle }
       {WEEK.map((w, i) => <div key={w} className={`cal-h wd${i}`}>{w}</div>)}
       {cells.map((d, i) =>
         d ? (
-          <button key={d} className={`cal-d wd${weekdayOf(d)} ${selected[d] ? "sel" : ""} ${marked.has(d) ? "marked" : ""}`} onClick={() => onToggle(d)}>
+          <button key={d} disabled={disabledDates.has(d)} title={disabledDates.has(d) ? "コピー元の日" : undefined} className={`cal-d wd${weekdayOf(d)} ${selected[d] ? "sel" : ""} ${marked.has(d) ? "marked" : ""} ${disabledDates.has(d) ? "src" : ""}`} onClick={() => onToggle(d)}>
             {Number(d.slice(8))}
           </button>
         ) : (

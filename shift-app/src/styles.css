@@ -245,3 +245,8 @@ select.time { padding: 5px 4px; }
 .tt.task-mode { user-select: none; }
 .task-chip { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 8px; color: #1f2933; margin: 1px 2px 1px 0; }
 .memo { color: #8a5a00; white-space: normal; max-width: 180px; }
+
+/* コピー */
+.cal-d.src { background: #eef2f8; border-style: dashed; cursor: not-allowed; }
+.copy-btn { margin-top: 3px; font-size: 11px; padding: 1px 6px; }
+.modal .cal-d { aspect-ratio: 1.8; font-size: 13px; }

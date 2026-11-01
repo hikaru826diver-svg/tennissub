@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addTask, autoPlaceBreak, breaksText, normalizeTasks, taskAt, taskColor, fmtDate, hours, inBreak, legalBreak, shortTime, sortStaff, toHHMM, toMin, weekdayOf, withBreaks } from "../../utils.js";
+import { addTask, copyShiftTo, daysInMonth, WEEK, autoPlaceBreak, breaksText, normalizeTasks, taskAt, taskColor, fmtDate, hours, inBreak, legalBreak, shortTime, sortStaff, toHHMM, toMin, weekdayOf, withBreaks } from "../../utils.js";
 import { exportTimetable } from "../../excel.js";
-import { Modal } from "../../components.jsx";
+import { CalendarPicker, Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 
 const SLOT = 15; // 15分単位
@@ -32,6 +32,7 @@ export default function Timetable({ store, settings, depts, ctx }) {
   const [taskLabel, setTaskLabel] = useState(labels[0] || "");
   const [drag, setDrag] = useState(null); // {shiftId, from, to}
   const [editing, setEditing] = useState(null); // shift
+  const [copying, setCopying] = useState(null); // shift
   const dragRef = useRef(null);
   dragRef.current = drag;
 
@@ -158,8 +159,9 @@ export default function Timetable({ store, settings, depts, ctx }) {
                     const short = (s.breakMin || 0) < legalBreak(en - st);
                     return (
                       <tr key={s.id}>
-                        <td className="sticky name-col clickable" onClick={() => setEditing(s)} title="休憩を編集">
+                        <td className="sticky name-col clickable" onClick={() => setEditing(s)} title="休憩・業務・メモを編集">
                           <b>{staffMap[s.staffId]?.name || "(削除済)"}</b> <span className="muted small">✎</span>
+                          <div><button className="btn tiny copy-btn" onClick={(e) => { e.stopPropagation(); setCopying(s); }} title="この人のタイムテーブルを他の日にコピー">⧉ 他の日にコピー</button></div>
                         </td>
                         <td className="sticky2 nowrap small">
                           {shortTime(s.start)}〜{shortTime(s.end)}
@@ -210,6 +212,17 @@ export default function Timetable({ store, settings, depts, ctx }) {
         );
       })}
 
+      {copying && (
+        <CopyModal
+          src={data.shift.find((x) => x.id === copying.id) || copying}
+          staff={staffMap[copying.staffId]}
+          dept={depts.find((d) => d.id === copying.deptId)}
+          allShifts={data.shift}
+          settings={settings}
+          onSave={(recs) => recs.length && save("shift", recs)}
+          onClose={() => setCopying(null)}
+        />
+      )}
       {editing && (
         <BreakModal
           shift={data.shift.find((s) => s.id === editing.id) || editing}
@@ -297,6 +310,100 @@ function BreakModal({ shift, staff, labels, onSave, onClose }) {
       <label>メモ（タイムテーブルに表示）
         <textarea rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例：14時から新人研修担当、鍵当番 など" />
       </label>
+    </Modal>
+  );
+}
+
+function CopyModal({ src, staff, dept, allShifts, settings, onSave, onClose }) {
+  const [month, setMonth] = useState(src.date.slice(0, 7));
+  const [selected, setSelected] = useState({});
+  const [opts, setOpts] = useState({ time: true, breaks: true, tasks: true, memo: true, create: true });
+  const [done, setDone] = useState(null);
+  const mine = (d) => allShifts.filter((x) => x.staffId === src.staffId && x.deptId === src.deptId && x.date === d).sort((a, b) => a.start.localeCompare(b.start));
+  const hasShift = new Set(allShifts.filter((x) => x.staffId === src.staffId && x.deptId === src.deptId && x.date.startsWith(month)).map((x) => x.date));
+  const toggle = (d) => d !== src.date && setSelected((s) => { const n = { ...s }; if (n[d]) delete n[d]; else n[d] = true; return n; });
+  const pick = (fn) => setSelected((s) => { const n = { ...s }; daysInMonth(month).filter((d) => d !== src.date && fn(d)).forEach((d) => (n[d] = true)); return n; });
+  const dates = Object.keys(selected).sort();
+
+  // プレビュー
+  const plan = dates.map((d) => {
+    const t = mine(d)[0] || null;
+    const rec = copyShiftTo(src, t, d, { ...opts, autoBreak: settings.autoBreak });
+    return { date: d, target: t, rec, action: !rec ? "skip" : t ? "update" : "create" };
+  });
+  const cnt = (a) => plan.filter((p) => p.action === a).length;
+  const nothing = !opts.time && !opts.breaks && !opts.tasks && !opts.memo;
+
+  const run = () => {
+    const recs = plan.filter((p) => p.rec).map((p) => p.rec);
+    if (!recs.length) return;
+    if (cnt("update") && !window.confirm(`${cnt("update")}日分は既存のシフトの内容を上書きします。よろしいですか？`)) return;
+    onSave(recs);
+    setDone(recs.length);
+    setSelected({});
+  };
+  const desc = [
+    `${src.start}〜${src.end}`,
+    src.breaks?.length ? `休憩 ${breaksText(src.breaks, true)}` : src.breakMin ? `休憩${src.breakMin}分` : "休憩なし",
+    src.tasks?.length ? `業務 ${src.tasks.map((t) => `${t.label}(${t.start}〜${t.end})`).join("、")}` : "",
+    src.memo ? `メモ「${src.memo}」` : "",
+  ].filter(Boolean).join(" ／ ");
+  const OPT = [["time", "勤務時間"], ["breaks", "休憩"], ["tasks", "業務"], ["memo", "メモ"]];
+
+  return (
+    <Modal title={`タイムテーブルのコピー：${staff?.name || ""}（${dept?.name || ""}）`} onClose={onClose}
+      footer={<>
+        <span className="muted small" style={{ flex: 1 }}>{dates.length ? `新規 ${cnt("create")}日・上書き ${cnt("update")}日${cnt("skip") ? `・対象外 ${cnt("skip")}日` : ""}` : "コピー先の日を選んでください"}</span>
+        <button className="btn" onClick={onClose}>閉じる</button>
+        <button className="btn primary" disabled={!dates.length || nothing || !(cnt("create") + cnt("update"))} onClick={run}>コピーする</button>
+      </>}>
+      <div className="banner info"><b>コピー元：{fmtDate(src.date)}</b><div className="small">{desc}</div></div>
+      {done != null && <div className="banner ok">{done}日分にコピーしました。続けて別の日を選んでコピーすることもできます。</div>}
+      <div className="field">
+        <div className="small muted">コピーする内容</div>
+        <div className="row wrap">
+          {OPT.map(([k, label]) => (
+            <label key={k} className="inline chip"><input type="checkbox" checked={opts[k]} onChange={(e) => setOpts({ ...opts, [k]: e.target.checked })} />{label}</label>
+          ))}
+        </div>
+        <label className="inline small" style={{ marginTop: 6 }}>
+          <input type="checkbox" checked={opts.create} disabled={!opts.time} onChange={(e) => setOpts({ ...opts, create: e.target.checked })} />
+          シフトがない日は新しくシフトを作成する（「勤務時間」をコピーする場合のみ）
+        </label>
+      </div>
+      <div className="row between wrap">
+        <div className="small muted">コピー先の日（複数選択可）</div>
+        <MonthInput value={month} onChange={(m) => { setMonth(m); }} />
+      </div>
+      <CalendarPicker month={month} selected={selected} marked={hasShift} onToggle={toggle} disabledDates={new Set([src.date])} />
+      <div className="row wrap small">
+        <span className="muted">一括選択：</span>
+        {WEEK.map((w, i) => <button key={w} className="btn tiny ghost" onClick={() => pick((d) => weekdayOf(d) === i)}>{w}</button>)}
+        <button className="btn tiny ghost" onClick={() => pick((d) => hasShift.has(d))}>シフトがある日</button>
+        <button className="btn tiny ghost" onClick={() => pick((d) => weekdayOf(d) === weekdayOf(src.date))}>同じ曜日</button>
+        <button className="btn tiny ghost" onClick={() => setSelected({})}>選択解除</button>
+        <span className="legend"><i className="dot sub" />シフトあり</span>
+      </div>
+      {dates.length > 0 && (
+        <div className="scroll-x" style={{ maxHeight: 180, overflowY: "auto" }}>
+          <table className="tbl compact">
+            <tbody>
+              {plan.map((p) => (
+                <tr key={p.date}>
+                  <td className={`wd${weekdayOf(p.date)} nowrap`}>{fmtDate(p.date)}</td>
+                  <td>{p.action === "create" ? <span className="tag green">新規</span> : p.action === "update" ? <span className="tag">上書き</span> : <span className="tag red">対象外</span>}</td>
+                  <td className="small">
+                    {p.action === "skip" ? "シフトがないためコピーしません" : <>
+                      {p.target && opts.time && p.target.start + "〜" + p.target.end !== p.rec.start + "〜" + p.rec.end ? `${p.target.start}〜${p.target.end} → ` : ""}{p.rec.start}〜{p.rec.end}
+                      {p.target && mine(p.date).length > 1 && <span className="muted">（同日の最初の勤務に適用）</span>}
+                    </>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Modal>
   );
 }

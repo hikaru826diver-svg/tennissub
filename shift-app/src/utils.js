@@ -317,3 +317,42 @@ export function copyShiftTo(src, target, date, opts, newId = uid()) {
   if (opts.memo) base.memo = src.memo || "";
   return base;
 }
+
+// ===== 期間 =====
+const ymd = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+const parse = (d) => { const [y, m, dd] = d.split("-").map(Number); return new Date(y, m - 1, dd); };
+/** from〜to の日付配列（両端含む） */
+export function datesBetween(from, to) {
+  const out = [];
+  if (!from || !to || from > to) return out;
+  for (let dt = parse(from); ymd(dt) <= to; dt.setDate(dt.getDate() + 1)) out.push(ymd(dt));
+  return out;
+}
+export function addMonths(ym, n) {
+  const [y, m] = ym.split("-").map(Number);
+  const dt = new Date(y, m - 1 + n, 1);
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`;
+}
+/**
+ * 給与月の対象期間
+ * closingDay: 0 または 31 以上 = 末日締め（1日〜末日）、1〜28 = その日締め（前月 締め日+1 〜 当月 締め日）
+ */
+export function payPeriod(ym, closingDay = 0) {
+  const c = Number(closingDay) || 0;
+  if (c <= 0 || c >= 29) return { from: `${ym}-01`, to: daysInMonth(ym).slice(-1)[0] };
+  const [y, m] = ym.split("-").map(Number);
+  return { from: ymd(new Date(y, m - 2, c + 1)), to: `${ym}-${pad(c)}` };
+}
+/** 期間の表示名 */
+export function fmtPeriod(from, to) {
+  const f = (d) => `${Number(d.slice(0, 4))}/${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
+  return `${f(from)}〜${f(to)}`;
+}
+
+/** 日付 → 給与月（締め日基準） */
+export function payMonthOf(date, closingDay) {
+  const c = Number(closingDay) || 0;
+  const ym = date.slice(0, 7);
+  if (c <= 0 || c >= 29) return ym;
+  return Number(date.slice(8)) > c ? addMonths(ym, 1) : ym;
+}

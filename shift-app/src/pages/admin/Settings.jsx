@@ -119,6 +119,12 @@ export default function Settings({ store, settings }) {
           <label>時間外割増率<input type="number" step="0.05" value={f.overtimeRate} onChange={(e) => set({ overtimeRate: e.target.value })} /></label>
           <label className="inline"><input type="checkbox" checked={f.nightPremium} onChange={(e) => set({ nightPremium: e.target.checked })} />深夜割増（22:00〜翌5:00）</label>
           <label>深夜割増率<input type="number" step="0.05" value={f.nightRate} onChange={(e) => set({ nightRate: e.target.value })} /></label>
+          <label>給与締め日（単月集計の対象期間）
+            <select value={f.closingDay || 0} onChange={(e) => set({ closingDay: Number(e.target.value) })}>
+              <option value={0}>末日締め（1日〜末日）</option>
+              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}日締め（前月{d + 1}日〜当月{d}日）</option>)}
+            </select>
+          </label>
           <label className="inline"><input type="checkbox" checked={f.autoBreak} onChange={(e) => set({ autoBreak: e.target.checked })} />法定休憩を自動設定（6h超45分・8h超60分）</label>
         </div>
       </div>

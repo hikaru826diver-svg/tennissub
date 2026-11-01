@@ -1,5 +1,5 @@
 // ===== Excel 出力（exceljs を必要時に読み込み） =====
-import { aggregate, breaksText, calcPayroll, inBreak, taskAt, taskColor, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
+import { aggregate, breaksText, calcPayroll, datesBetween, payMonthOf, inBreak, taskAt, taskColor, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
 
 const THIN = { style: "thin", color: { argb: "FFBFBFBF" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
@@ -27,7 +27,10 @@ async function download(wb, name) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function styleRange(ws, r1, c1, r2, c2, style) {
@@ -245,16 +248,17 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
 }
 
 // ---------- 給与 ----------
-export async function exportPayroll({ data, settings, depts, month }) {
+export async function exportPayroll({ data, settings, depts, from, to, label }) {
+  const dates = datesBetween(from, to);
   const wb = await newBook();
   const staffMap = Object.fromEntries(data.staff.map((s) => [s.id, s]));
   const deptMap = Object.fromEntries(depts.map((d) => [d.id, d]));
-  const rows = calcPayroll(data.shift.filter((s) => s.date.startsWith(month)), staffMap, settings);
+  const rows = calcPayroll(data.shift.filter((s) => s.date >= from && s.date <= to), staffMap, settings);
   const h = (m) => Math.round((m / 60) * 100) / 100;
 
   const sheet = (name, title, header, body, footer, widths) => {
     const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 3 }], pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
-    ws.getCell(1, 1).value = `${settings.orgName}　${fmtMonth(month)}　${title}`;
+    ws.getCell(1, 1).value = `${settings.orgName}　${label}　${title}`;
     ws.getCell(1, 1).font = { size: 14, bold: true };
     ws.addRow([]);
     ws.addRow(header);
@@ -295,13 +299,13 @@ export async function exportPayroll({ data, settings, depts, month }) {
   const bdate = aggregate(rows, (r) => r.date);
   const ws3 = sheet("日毎", "人件費（日毎・部門別）",
     ["日付", ...depts.map((d) => d.name), "人数", "実働(h)", "日計"],
-    daysInMonth(month).map((d) => [fmtDate(d), ...depts.map((dp) => bdd[`${d}|${dp.id}`]?.total || 0), bdate[d]?.days.size || 0, h(bdate[d]?.workMin || 0), bdate[d]?.total || 0]),
+    dates.map((d) => [`${d.slice(0, 4)}/${fmtDate(d)}`, ...depts.map((dp) => bdd[`${d}|${dp.id}`]?.total || 0), bdate[d]?.days.size || 0, h(bdate[d]?.workMin || 0), bdate[d]?.total || 0]),
     ["合計", ...depts.map((d) => bd[d.id]?.total || 0), tot?.days.size || 0, h(tot?.workMin || 0), tot?.total || 0],
     [11, ...depts.map(() => 12), 7, 9, 12]);
   fmt(ws3, [...depts.map((_, i) => i + 2), depts.length + 4], "#,##0");
   ws3.eachRow((row, rn) => {
-    if (rn > 3 && rn < 4 + daysInMonth(month).length) {
-      const d = daysInMonth(month)[rn - 4];
+    if (rn > 3 && rn < 4 + dates.length) {
+      const d = dates[rn - 4];
       row.getCell(1).font = { color: { argb: wdColor(d) } };
     }
   });
@@ -315,5 +319,17 @@ export async function exportPayroll({ data, settings, depts, month }) {
     [11, 12, 14, 7, 7, 8, 8, 9, 8, 8, 10, 9, 9, 10]);
   fmt(ws4, [10, 11, 12, 13, 14], "#,##0");
 
-  await download(wb, `給与集計_${month}.xlsx`);
+  // 月別（複数の給与月にまたがる場合）
+  const months = [...new Set(dates.map((d) => payMonthOf(d, settings.closingDay)))];
+  if (months.length > 1) {
+    const bm = aggregate(rows, (r) => payMonthOf(r.date, settings.closingDay));
+    const bmd = aggregate(rows, (r) => `${payMonthOf(r.date, settings.closingDay)}|${r.deptId}`);
+    const ws5 = sheet("月別", "人件費（月別・部門別）",
+      ["給与月", ...depts.map((d) => d.name), "延べ人日", "実働(h)", "月計"],
+      months.map((m) => [fmtMonth(m), ...depts.map((dp) => bmd[`${m}|${dp.id}`]?.total || 0), bm[m]?.days.size || 0, h(bm[m]?.workMin || 0), bm[m]?.total || 0]),
+      ["合計", ...depts.map((d) => bd[d.id]?.total || 0), tot?.days.size || 0, h(tot?.workMin || 0), tot?.total || 0],
+      [12, ...depts.map(() => 12), 9, 9, 12]);
+    fmt(ws5, [...depts.map((_, i) => i + 2), depts.length + 4], "#,##0");
+  }
+  await download(wb, `給与集計_${from}_${to}.xlsx`);
 }

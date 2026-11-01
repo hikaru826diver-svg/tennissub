@@ -111,6 +111,17 @@ describe("タイムテーブルのコピー", () => {
   });
 });
 
+describe("期間", () => {
+  it("末日締め・20日締め・期間の日付", async () => {
+    const { payPeriod, datesBetween } = await import("./utils.js");
+    expect(payPeriod("2026-02")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+    expect(payPeriod("2026-01", 20)).toEqual({ from: "2025-12-21", to: "2026-01-20" });
+    expect(payPeriod("2026-03", 28)).toEqual({ from: "2026-03-01", to: "2026-03-28" });
+    expect(datesBetween("2026-12-30", "2027-01-02")).toEqual(["2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02"]);
+    expect(datesBetween("2026-12-02", "2026-12-01")).toEqual([]);
+  });
+});
+
 describe("shiftFromRequest", () => {
   it("法定休憩を自動設定", () => {
     const s = shiftFromRequest({ id: "r", staffId: "a", deptId: "d", date: "2026-12-01", start: "09:00", end: "18:00" }, { autoBreak: true });

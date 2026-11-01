@@ -9,6 +9,7 @@ export default function Settings({ store, settings }) {
   const [f, setF] = useState(() => ({
     ...settings,
     categoriesText: settings.categories.join("、"),
+    taskLabelsText: (settings.taskLabels || []).join("、"),
     patternsText: (settings.patterns || []).map((p) => `${p.start}-${p.end}`).join("、"),
   }));
   const [saved, setSaved] = useState(false);
@@ -23,7 +24,7 @@ export default function Settings({ store, settings }) {
       const hm = (h, mm) => `${String(h).padStart(2, "0")}:${mm || "00"}`;
       return { start: hm(m[1], m[2]), end: hm(m[3], m[4]) };
     }).filter(Boolean);
-    const { categoriesText, patternsText, ...rest } = f;
+    const { categoriesText, patternsText, taskLabelsText, ...rest } = f;
     await save("setting", {
       ...rest,
       id: "settings",
@@ -33,6 +34,7 @@ export default function Settings({ store, settings }) {
       overtimeRate: Number(f.overtimeRate),
       nightRate: Number(f.nightRate),
       categories: categoriesText.split(/[、,]/).map((s) => s.trim()).filter(Boolean),
+      taskLabels: taskLabelsText.split(/[、,]/).map((s) => s.trim()).filter(Boolean),
       patterns,
     });
     setSaved(true);
@@ -105,6 +107,7 @@ export default function Settings({ store, settings }) {
             </select>
           </label>
           <label>スタッフ区分（「、」区切り）<input value={f.categoriesText} onChange={(e) => set({ categoriesText: e.target.value })} /></label>
+          <label>タイムテーブルの業務項目（「、」区切り）<input value={f.taskLabelsText} onChange={(e) => set({ taskLabelsText: e.target.value })} placeholder="受付、レジ、清掃、監視" /></label>
           <label>シフトパターン（例：9-17、9:30-13:00）<input value={f.patternsText} onChange={(e) => set({ patternsText: e.target.value })} placeholder="9-17、9-13、13-17、17-22" /></label>
         </div>
       </div>

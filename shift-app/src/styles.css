@@ -1,4 +1,6 @@
+button, input, select, textarea { color: var(--text); }
 :root {
+  color-scheme: light;
   --bg: #f4f6fa;
   --card: #fff;
   --text: #1f2933;
@@ -98,7 +100,7 @@ label.inline { flex-direction: row; align-items: center; color: var(--text); }
 .btn.tiny { padding: 2px 8px; font-size: 12px; }
 .btn.block { width: 100%; justify-content: center; padding: 12px; font-size: 15px; margin-top: 10px; }
 .seg { display: inline-flex; border: 1px solid #c9d1dc; border-radius: 6px; overflow: hidden; }
-.seg button { font: inherit; font-size: 13px; border: 0; background: #fff; padding: 5px 12px; cursor: pointer; border-right: 1px solid #c9d1dc; }
+.seg button { font: inherit; font-size: 13px; border: 0; background: #fff; color: var(--text); padding: 5px 12px; cursor: pointer; border-right: 1px solid #c9d1dc; }
 .seg button:last-child { border-right: 0; }
 .seg button.on { background: var(--primary); color: #fff; }
 
@@ -197,7 +199,6 @@ select.time { padding: 5px 4px; }
 .tt .name-col { min-width: 130px; width: 130px; text-align: left; }
 .tt td.slot { padding: 0; min-width: 14px; width: 14px; height: 30px; }
 .tt td.slot.h { border-left: 1px solid #d5dce6; }
-.tt td.slot.on { opacity: 0.85; }
 .tt td.slot.cnt { text-align: left; font-weight: 600; font-size: 11px; background: #f7f9fc; height: 22px; }
 
 /* KPI */
@@ -226,10 +227,21 @@ select.time { padding: 5px 4px; }
 .tbl tr.empty-row td { background: #fafbfd; }
 /* 休憩 */
 .sw.brk { background: repeating-linear-gradient(45deg, #fff 0 3px, #9aa7b8 3px 5px); }
-.tt td.slot.brk { background: repeating-linear-gradient(45deg, #fff 0 3px, var(--c, #9aa7b8) 3px 5px); opacity: 0.9; }
+.tt td.slot.brk { background: repeating-linear-gradient(45deg, #fff 0 3px, var(--c, #9aa7b8) 3px 5px);  }
 .tt td.slot.sel { background: #f2c94c !important; }
 .tt.break-mode td.slot.on { cursor: crosshair; }
 .tt.break-mode td.slot.brk { cursor: pointer; }
 .tt.break-mode { user-select: none; }
 .tt td.clickable { cursor: pointer; }
 .tt td.clickable:hover b { color: var(--primary); text-decoration: underline; }
+
+/* 全部門表示 */
+.grid-tbl tr.dept-row th, .grid-tbl tr.dept-row td { background: #eef2f8; font-weight: 700; color: var(--text); }
+.grid-tbl tr.sep td { height: 6px; padding: 0; background: var(--bg); border-right: 0; }
+/* 業務 */
+.tt td.slot.task { position: relative; }
+.tt td.slot .task-label { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); font-size: 10px; font-weight: 700; color: #1f2933; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; pointer-events: none; }
+.tt.task-mode td.slot.on { cursor: crosshair; }
+.tt.task-mode { user-select: none; }
+.task-chip { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 8px; color: #1f2933; margin: 1px 2px 1px 0; }
+.memo { color: #8a5a00; white-space: normal; max-width: 180px; }

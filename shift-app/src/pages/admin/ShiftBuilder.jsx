@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { aggregate, breaksText, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
-import { DeptSelect, Modal, MonthInput } from "../../components.jsx";
+import { aggregate, breaksText, normalizeTasks, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
+import { Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 import { exportShiftTable } from "../../excel.js";
 
@@ -9,76 +9,86 @@ const short = (t) => t || "";
 
 export default function ShiftBuilder({ store, settings, depts, ctx }) {
   const { data, save, remove } = store;
-  const { month, deptId } = ctx;
+  const { month } = ctx;
+  // "" = 全部門
+  const viewDept = ctx.sbDept ?? ctx.deptId;
+  const shownDepts = viewDept ? depts.filter((d) => d.id === viewDept) : depts;
+  const isAll = !viewDept;
   const days = daysInMonth(month);
   const times = timeOptions(settings.dayStart, Math.max(settings.dayEnd, 24), settings.stepMin);
   const patterns = settings.patterns?.length ? settings.patterns : [{ start: "09:00", end: "17:00" }, { start: "09:00", end: "13:00" }, { start: "13:00", end: "17:00" }, { start: "17:00", end: "22:00" }];
   const [mode, setMode] = useState("edit"); // edit | paint
   const [pattern, setPattern] = useState(0); // index or "erase"
-  const [modal, setModal] = useState(null); // {staffId, date}
+  const [modal, setModal] = useState(null); // {staffId, date, deptId}
   const [showReq, setShowReq] = useState(true);
+  const [addFor, setAddFor] = useState(null); // deptId
 
   const staffMap = useMemo(() => Object.fromEntries(data.staff.map((s) => [s.id, s])), [data.staff]);
   const monthShifts = useMemo(() => data.shift.filter((s) => s.date.startsWith(month)), [data.shift, month]);
-  const deptShifts = monthShifts.filter((s) => s.deptId === deptId);
-  const deptReqs = data.request.filter((r) => r.deptId === deptId && r.date.startsWith(month));
+  const shownIds = new Set(shownDepts.map((d) => d.id));
+  const viewShifts = monthShifts.filter((s) => shownIds.has(s.deptId));
+  const viewReqs = data.request.filter((r) => shownIds.has(r.deptId) && r.date.startsWith(month));
 
-  const staffRows = rosterStaff(data, deptId, month);
-  const rosterId = `${deptId}|${month}`;
-  const roster = data.roster?.find((r) => r.id === rosterId) || { id: rosterId, deptId, month, staffIds: [] };
-  const [addOpen, setAddOpen] = useState(false);
-
-  const addToRoster = (ids) => save("roster", { ...roster, staffIds: [...new Set([...roster.staffIds, ...ids])] });
-  const removeFromRoster = (st) => {
-    const has = deptShifts.filter((s) => s.staffId === st.id);
+  const getRoster = (did) => data.roster?.find((r) => r.id === `${did}|${month}`) || { id: `${did}|${month}`, deptId: did, month, staffIds: [] };
+  const addToRoster = (did, ids) => { const r = getRoster(did); save("roster", { ...r, staffIds: [...new Set([...r.staffIds, ...ids])] }); };
+  const removeFromRoster = (did, st) => {
+    const has = viewShifts.filter((s) => s.staffId === st.id && s.deptId === did);
     if (has.length && !window.confirm(`${st.name} さんにはこの月のシフトが ${has.length}件 あります。シフトも削除して行を外しますか？`)) return;
     if (has.length) remove("shift", has.map((s) => s.id));
-    save("roster", { ...roster, staffIds: roster.staffIds.filter((id) => id !== st.id) });
+    const r = getRoster(did);
+    save("roster", { ...r, staffIds: r.staffIds.filter((id) => id !== st.id) });
   };
 
-  const cellShifts = (sid, d) => deptShifts.filter((s) => s.staffId === sid && s.date === d).sort((a, b) => a.start.localeCompare(b.start));
-  const cellReqs = (sid, d) => deptReqs.filter((r) => r.staffId === sid && r.date === d);
+  const cellShifts = (sid, d, did) => viewShifts.filter((s) => s.staffId === sid && s.date === d && s.deptId === did).sort((a, b) => a.start.localeCompare(b.start));
+  const cellReqs = (sid, d, did) => viewReqs.filter((r) => r.staffId === sid && r.date === d && r.deptId === did);
 
   // 給与（全部門のシフトで計算 → 時間外判定を部門横断で行う）
-  const pay = useMemo(() => calcPayroll(monthShifts, staffMap, settings).filter((r) => r.deptId === deptId), [monthShifts, staffMap, settings, deptId]);
-  const byStaff = aggregate(pay, (r) => r.staffId);
-  const byDate = aggregate(pay, (r) => r.date);
-  const total = aggregate(pay, () => "all").all;
+  const pay = useMemo(() => calcPayroll(monthShifts, staffMap, settings), [monthShifts, staffMap, settings]);
+  const viewPay = pay.filter((r) => shownIds.has(r.deptId));
+  const byStaffDept = aggregate(viewPay, (r) => `${r.staffId}|${r.deptId}`);
+  const byDept = aggregate(viewPay, (r) => r.deptId);
+  const byDate = aggregate(viewPay, (r) => r.date);
+  const total = aggregate(viewPay, () => "all").all;
 
-  const onCell = (sid, d) => {
-    if (mode === "edit") return setModal({ staffId: sid, date: d });
-    const existing = cellShifts(sid, d);
+  const onCell = (sid, d, did) => {
+    if (mode === "edit") return setModal({ staffId: sid, date: d, deptId: did });
+    const existing = cellShifts(sid, d, did);
     if (pattern === "erase") return existing.length && remove("shift", existing.map((s) => s.id));
     const p = patterns[pattern];
     const span = toMin(p.end) - toMin(p.start);
-    const rec = { id: existing[0]?.id || uid(), staffId: sid, deptId, date: d, start: p.start, end: p.end, breakMin: settings.autoBreak ? legalBreak(span) : 0 };
-    save("shift", rec);
+    save("shift", { id: existing[0]?.id || uid(), staffId: sid, deptId: did, date: d, start: p.start, end: p.end, breakMin: settings.autoBreak ? legalBreak(span) : 0 });
   };
 
+  const scopeName = isAll ? "全部門" : shownDepts[0]?.name;
   const adoptAll = () => {
-    const target = deptReqs.filter((r) => !cellShifts(r.staffId, r.date).length);
+    const target = viewReqs.filter((r) => !cellShifts(r.staffId, r.date, r.deptId).length);
     if (!target.length) return alert("未反映の希望はありません");
-    if (window.confirm(`${month} の希望 ${target.length}件 をシフトに一括反映しますか？\n（すでにシフトがある日はスキップします）`)) save("shift", target.map((r) => shiftFromRequest(r, settings)));
+    if (window.confirm(`${scopeName}：${month} の希望 ${target.length}件 をシフトに一括反映しますか？\n（すでにシフトがある日はスキップします）`)) save("shift", target.map((r) => shiftFromRequest(r, settings)));
   };
   const clearMonth = () => {
-    if (!deptShifts.length) return;
-    if (window.confirm(`${depts.find((d) => d.id === deptId)?.name} の ${month} のシフト ${deptShifts.length}件 をすべて削除しますか？`)) remove("shift", deptShifts.map((s) => s.id));
+    if (!viewShifts.length) return;
+    if (window.confirm(`${scopeName} の ${month} のシフト ${viewShifts.length}件 をすべて削除しますか？`)) remove("shift", viewShifts.map((s) => s.id));
   };
 
-  if (!deptId) return <h1>シフト作成</h1>;
+  if (!depts.length) return <h1>シフト作成</h1>;
+  const cols = days.length + 4;
+  const addDept = addFor && depts.find((d) => d.id === addFor);
 
   return (
     <>
       <div className="row between wrap">
         <h1>シフト作成ツール</h1>
         <div className="row wrap">
-          <button className="btn small" onClick={() => exportShiftTable({ data, settings, depts: depts.filter((d) => d.id === deptId), month })}>⬇ Excel（この部門）</button>
+          {!isAll && <button className="btn small" onClick={() => exportShiftTable({ data, settings, depts: shownDepts, month })}>⬇ Excel（この部門）</button>}
           <button className="btn small" onClick={() => exportShiftTable({ data, settings, depts, month })}>⬇ Excel（全部門）</button>
         </div>
       </div>
       <div className="card row wrap">
         <MonthInput value={month} onChange={(m) => ctx.set({ month: m })} />
-        <DeptSelect depts={depts} value={deptId} onChange={(v) => ctx.set({ deptId: v })} />
+        <select value={viewDept} onChange={(e) => ctx.set({ sbDept: e.target.value, ...(e.target.value ? { deptId: e.target.value } : {}) })}>
+          <option value="">全部門</option>
+          {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
         <div className="seg">
           <button className={mode === "edit" ? "on" : ""} onClick={() => setMode("edit")}>詳細編集</button>
           <button className={mode === "paint" ? "on" : ""} onClick={() => setMode("paint")}>パターン入力</button>
@@ -113,45 +123,63 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
               <th>日数</th><th>時間</th><th>給与概算</th>
             </tr>
           </thead>
-          <tbody>
-            {staffRows.map((st) => (
-              <tr key={st.id}>
-                <td className="sticky name-col">
-                  <div className="row between">
-                    <b>{st.name}</b>
-                    {st.manual && <button className="btn tiny ghost" title="この月のシフト表から外す" onClick={() => removeFromRoster(st)}>✕</button>}
-                  </div>
-                  <div className="small muted">{st.category} {yen(st.wage)} {st.extra && <span className="tag">応援</span>}</div>
-                </td>
-                {days.map((d) => {
-                  const sh = cellShifts(st.id, d);
-                  const rq = showReq ? cellReqs(st.id, d) : [];
-                  const diff = sh.length && rq.length && !rq.some((r) => sh.some((s) => s.start === r.start && s.end === r.end));
+          {shownDepts.map((dept) => {
+            const rows = rosterStaff(data, dept.id, month);
+            const dShifts = viewShifts.filter((s) => s.deptId === dept.id);
+            const dTot = byDept[dept.id];
+            return (
+              <tbody key={dept.id}>
+                {isAll && (
+                  <tr className="dept-row">
+                    <th className="sticky name-col"><span className="dept-dot" style={{ background: dept.color }} />{dept.name}</th>
+                    {days.map((d) => <td key={d} className="c small">{new Set(dShifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""}</td>)}
+                    <td className="r small">{dTot?.days.size || 0}</td><td className="r small">{hours(dTot?.workMin)}</td><td className="r small">{yen(dTot?.total)}</td>
+                  </tr>
+                )}
+                {rows.map((st) => {
+                  const a = byStaffDept[`${st.id}|${dept.id}`];
                   return (
-                    <td key={d} className={`cell wd${weekdayOf(d)} ${sh.length ? (diff ? "diff" : "shift") : rq.length ? "req" : ""}`} onClick={() => onCell(st.id, d)}
-                      title={rq.map((r) => `希望 ${r.allDay ? "終日可" : `${r.start}-${r.end}`} ${r.note || ""}`).join("\n")}>
-                      {sh.map((s) => <div key={s.id}>{short(s.start)}<br />{short(s.end)}</div>)}
-                      {!sh.length && rq.map((r) => <div key={r.id} className="req-text">{r.allDay ? "終日" : <>{short(r.start)}<br />{short(r.end)}</>}</div>)}
-                    </td>
+                    <tr key={st.id}>
+                      <td className="sticky name-col">
+                        <div className="row between">
+                          <b>{st.name}</b>
+                          {st.manual && <button className="btn tiny ghost" title="この月のシフト表から外す" onClick={() => removeFromRoster(dept.id, st)}>✕</button>}
+                        </div>
+                        <div className="small muted">{st.category} {yen(st.wage)} {st.extra && <span className="tag">応援</span>}</div>
+                      </td>
+                      {days.map((d) => {
+                        const sh = cellShifts(st.id, d, dept.id);
+                        const rq = showReq ? cellReqs(st.id, d, dept.id) : [];
+                        const diff = sh.length && rq.length && !rq.some((r) => sh.some((s) => s.start === r.start && s.end === r.end));
+                        return (
+                          <td key={d} className={`cell wd${weekdayOf(d)} ${sh.length ? (diff ? "diff" : "shift") : rq.length ? "req" : ""}`} onClick={() => onCell(st.id, d, dept.id)}
+                            title={rq.map((r) => `希望 ${r.allDay ? "終日可" : `${r.start}-${r.end}`} ${r.note || ""}`).join("\n")}>
+                            {sh.map((s) => <div key={s.id}>{short(s.start)}<br />{short(s.end)}</div>)}
+                            {!sh.length && rq.map((r) => <div key={r.id} className="req-text">{r.allDay ? "終日" : <>{short(r.start)}<br />{short(r.end)}</>}</div>)}
+                          </td>
+                        );
+                      })}
+                      <td className="r nowrap">{a?.days.size || 0}日</td>
+                      <td className="r nowrap">{hours(a?.workMin)}</td>
+                      <td className="r nowrap">{yen(a?.total)}</td>
+                    </tr>
                   );
                 })}
-                <td className="r nowrap">{byStaff[st.id]?.days.size || 0}日</td>
-                <td className="r nowrap">{hours(byStaff[st.id]?.workMin)}</td>
-                <td className="r nowrap">{yen(byStaff[st.id]?.total)}</td>
-              </tr>
-            ))}
-            {!staffRows.length && <tr><td colSpan={days.length + 4} className="muted center">この部門に所属するスタッフがいません</td></tr>}
-            <tr>
-              <td className="sticky name-col add-row" colSpan={1}>
-                <button className="btn tiny primary" onClick={() => setAddOpen(true)}>＋ スタッフを追加</button>
-              </td>
-              <td colSpan={days.length + 3} className="muted small">他部門からの応援スタッフや新しいスタッフを、この月のシフト表に追加できます</td>
-            </tr>
-          </tbody>
+                {!rows.length && <tr><td colSpan={cols} className="muted center">この部門に所属するスタッフがいません</td></tr>}
+                <tr>
+                  <td className="sticky name-col add-row">
+                    <button className="btn tiny primary" onClick={() => setAddFor(dept.id)}>＋ スタッフを追加</button>
+                  </td>
+                  <td colSpan={cols - 1} className="muted small">{isAll ? `${dept.name}：` : ""}他部門からの応援スタッフや新しいスタッフを、この月のシフト表に追加できます</td>
+                </tr>
+                {isAll && <tr className="sep"><td colSpan={cols} /></tr>}
+              </tbody>
+            );
+          })}
           <tfoot>
             <tr>
-              <th className="sticky name-col">出勤人数</th>
-              {days.map((d) => <td key={d} className="c">{new Set(deptShifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""}</td>)}
+              <th className="sticky name-col">出勤人数{isAll && "（全部門）"}</th>
+              {days.map((d) => <td key={d} className="c">{new Set(viewShifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""}</td>)}
               <td className="r">{total?.days.size || 0}</td><td className="r">{hours(total?.workMin)}</td><td className="r">{yen(total?.total)}</td>
             </tr>
             <tr>
@@ -168,30 +196,29 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
         </table>
       </div>
 
-      {addOpen && (
+      {addDept && (
         <AddStaffModal
-          candidates={data.staff.filter((x) => x.active !== false && !staffRows.some((r) => r.id === x.id)).sort(sortStaff)}
+          candidates={data.staff.filter((x) => x.active !== false && !rosterStaff(data, addDept.id, month).some((r) => r.id === x.id)).sort(sortStaff)}
           depts={depts}
-          deptId={deptId}
+          deptId={addDept.id}
           settings={settings}
-          onAdd={(ids) => { addToRoster(ids); setAddOpen(false); }}
+          onAdd={(ids) => { addToRoster(addDept.id, ids); setAddFor(null); }}
           onCreate={async (rec, addToDept) => {
-            const st = { id: uid(), kana: "", active: true, note: "", ...rec, deptIds: addToDept ? [deptId] : [] };
+            const st = { id: uid(), kana: "", active: true, note: "", ...rec, deptIds: addToDept ? [addDept.id] : [] };
             await save("staff", st);
-            if (!addToDept) addToRoster([st.id]);
-            setAddOpen(false);
+            if (!addToDept) addToRoster(addDept.id, [st.id]);
+            setAddFor(null);
           }}
-          onClose={() => setAddOpen(false)}
+          onClose={() => setAddFor(null)}
         />
       )}
       {modal && (
         <ShiftModal
           {...modal}
           staff={staffMap[modal.staffId]}
-          deptId={deptId}
-          shifts={cellShifts(modal.staffId, modal.date)}
-          reqs={cellReqs(modal.staffId, modal.date)}
-          otherDept={monthShifts.filter((s) => s.staffId === modal.staffId && s.date === modal.date && s.deptId !== deptId)}
+          shifts={cellShifts(modal.staffId, modal.date, modal.deptId)}
+          reqs={cellReqs(modal.staffId, modal.date, modal.deptId)}
+          otherDept={monthShifts.filter((s) => s.staffId === modal.staffId && s.date === modal.date && s.deptId !== modal.deptId)}
           depts={depts}
           times={times}
           settings={settings}
@@ -209,6 +236,7 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
   const upd = (i, p) => setList((l) => l.map((s, k) => {
     if (k !== i) return s;
     const n = { ...s, ...p };
+    if (n.tasks?.length) n.tasks = normalizeTasks(n.tasks, n.start, n.end);
     // 休憩時間帯が登録済みなら勤務時間内に収めて維持、未登録なら法定休憩を自動設定
     if (n.breaks?.length) return withBreaks(n, n.breaks);
     if (settings.autoBreak && (p.start || p.end)) n.breakMin = legalBreak(toMin(n.end) - toMin(n.start));
@@ -222,7 +250,7 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
   const deptName = (id) => depts.find((d) => d.id === id)?.name;
 
   return (
-    <Modal title={`${staff?.name || ""} ／ ${fmtDate(date)}`} onClose={onClose}
+    <Modal title={`${staff?.name || ""} ／ ${fmtDate(date)} ／ ${depts.find((d) => d.id === deptId)?.name || ""}`} onClose={onClose}
       footer={<>
         <button className="btn danger" onClick={() => onSave([], shifts.map((s) => s.id))} disabled={!shifts.length}>この日のシフト削除</button>
         <span style={{ flex: 1 }} />

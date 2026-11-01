@@ -251,3 +251,41 @@ export function breaksText(breaks, full = false) {
   const f = full ? (t) => t : shortTime;
   return (breaks || []).map((b) => `${f(b.start)}〜${f(b.end)}`).join("、");
 }
+
+// ===== 業務（休憩以外の手動入力項目） =====
+export const TASK_COLORS = ["#f2c94c", "#6fcf97", "#bb8cf0", "#f2994a", "#56ccf2", "#ff8a8a", "#a3b8ff", "#c7d36f"];
+/** 業務名 → 色（設定の並び順、なければ文字列から決定） */
+export function taskColor(label, labels = []) {
+  const i = labels.indexOf(label);
+  if (i >= 0) return TASK_COLORS[i % TASK_COLORS.length];
+  let h = 0;
+  for (const c of label || "") h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return TASK_COLORS[h % TASK_COLORS.length];
+}
+/** 業務を追加（重なる既存業務は新しい業務で上書き＝分割） */
+export function addTask(tasks, task, shift) {
+  const a = toMin(task.start), b = toMin(task.end);
+  const out = [];
+  for (const t of tasks || []) {
+    const x = toMin(t.start), y = toMin(t.end);
+    if (y <= a || x >= b) { out.push(t); continue; }
+    if (x < a) out.push({ ...t, start: t.start, end: task.start });
+    if (y > b) out.push({ ...t, start: task.end, end: t.end });
+  }
+  out.push(task);
+  return normalizeTasks(out, shift.start, shift.end);
+}
+/** シフト時間内に収めて並べ替え */
+export function normalizeTasks(tasks, start, end) {
+  const st = toMin(start), en = toMin(end);
+  return (tasks || [])
+    .map((t) => ({ ...t, label: (t.label || "").trim() }))
+    .map((t) => ({ ...t, s: Math.max(toMin(t.start), st), e: Math.min(toMin(t.end), en) }))
+    .filter((t) => t.e > t.s && t.label)
+    .sort((x, y) => x.s - y.s)
+    .map(({ s, e, ...t }) => ({ ...t, start: toHHMM(s), end: toHHMM(e) }));
+}
+/** その時刻（分）の業務 */
+export function taskAt(shift, m) {
+  return (shift.tasks || []).find((t) => m >= toMin(t.start) && m < toMin(t.end));
+}

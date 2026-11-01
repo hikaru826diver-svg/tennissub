@@ -73,6 +73,17 @@ describe("休憩時間帯", () => {
   });
 });
 
+describe("業務", () => {
+  it("重なる業務は上書き分割、シフト外は除外", async () => {
+    const { addTask } = await import("./utils.js");
+    const sh = { start: "09:00", end: "17:00" };
+    let t = addTask([], { start: "08:00", end: "12:00", label: "受付" }, sh);
+    expect(t).toEqual([{ start: "09:00", end: "12:00", label: "受付" }]);
+    t = addTask(t, { start: "10:00", end: "11:00", label: "清掃" }, sh);
+    expect(t.map((x) => `${x.start}-${x.end}${x.label}`)).toEqual(["09:00-10:00受付", "10:00-11:00清掃", "11:00-12:00受付"]);
+  });
+});
+
 describe("shiftFromRequest", () => {
   it("法定休憩を自動設定", () => {
     const s = shiftFromRequest({ id: "r", staffId: "a", deptId: "d", date: "2026-12-01", start: "09:00", end: "18:00" }, { autoBreak: true });

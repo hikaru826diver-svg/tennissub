@@ -1,5 +1,5 @@
 // ===== Excel 出力（exceljs を必要時に読み込み） =====
-import { aggregate, breaksText, calcPayroll, inBreak, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
+import { aggregate, breaksText, calcPayroll, inBreak, taskAt, taskColor, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
 
 const THIN = { style: "thin", color: { argb: "FFBFBFBF" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
@@ -191,15 +191,22 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
       for (const s of list) {
         ws.getCell(r, 1).value = staffMap[s.staffId]?.name || "";
         ws.getCell(r, 2).value = `${shortTime(s.start)}〜${shortTime(s.end)}`;
-        ws.getCell(r, 3).value = s.breaks?.length ? breaksText(s.breaks) : s.breakMin ? `${s.breakMin}分` : "";
+        ws.getCell(r, 3).value = [s.breaks?.length ? breaksText(s.breaks) : s.breakMin ? `${s.breakMin}分` : "", s.memo ? `メモ:${s.memo}` : ""].filter(Boolean).join("\n");
         ws.getCell(r, 3).font = { size: 8 };
         ws.getCell(r, 3).alignment = { wrapText: true, vertical: "middle" };
         const st = toMin(s.start), en = toMin(s.end);
         slots.forEach((m, i) => {
           if (m >= st && m < en) {
-            ws.getCell(r, C0 + i).fill = inBreak(s, m)
+            const cell = ws.getCell(r, C0 + i);
+            const task = inBreak(s, m) ? null : taskAt(s, m);
+            cell.fill = inBreak(s, m)
               ? { type: "pattern", pattern: "lightUp", fgColor: { argb: argb(dept.color) }, bgColor: { argb: "FFFFFFFF" } }
-              : { type: "pattern", pattern: "solid", fgColor: { argb: argb(dept.color) } };
+              : { type: "pattern", pattern: "solid", fgColor: { argb: argb(task ? taskColor(task.label, settings.taskLabels || []) : dept.color) } };
+            if (task && (m === toMin(task.start) || m === st || inBreak(s, m - SLOT))) {
+              cell.value = task.label;
+              cell.font = { size: 8, bold: true };
+              cell.alignment = { vertical: "middle", horizontal: "left" };
+            }
           }
         });
         r++;

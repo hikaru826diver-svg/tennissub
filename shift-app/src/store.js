@@ -181,6 +181,7 @@ export const DEFAULT_SETTINGS = {
   nightPremium: true,
   nightRate: 0.25,
   autoBreak: true,
+  taskLabels: ["受付", "レジ", "清掃", "監視", "指導", "事務", "会議"],
 };
 export function getSettings(data) {
   const s = data.setting.find((r) => r.id === "settings") || {};

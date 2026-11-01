@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { daysInMonth, fmtDate, fmtMonth, shiftFromRequest, shortTime, weekdayOf } from "../../utils.js";
+import { daysInMonth, fmtDate, fmtMonth, shiftFromRequest, shortTime, sortStaff, weekdayOf } from "../../utils.js";
 import { MonthInput } from "../../components.jsx";
 
 export default function RequestList({ store, settings, depts, ctx }) {
@@ -8,6 +8,7 @@ export default function RequestList({ store, settings, depts, ctx }) {
   const [dateFilter, setDateFilter] = useState("");
   const [view, setView] = useState("date");
   const [showEmpty, setShowEmpty] = useState(true);
+  const [picked, setPicked] = useState(() => new Set()); // 個人別：選択中のスタッフ
   const staffMap = Object.fromEntries(data.staff.map((s) => [s.id, s]));
   const deptMap = Object.fromEntries(depts.map((d) => [d.id, d]));
 
@@ -30,12 +31,18 @@ export default function RequestList({ store, settings, depts, ctx }) {
     if (!window.confirm(`${one}登録済のシフト ${ids.length}件 を解除しますか？\n（シフト作成ツール・タイムテーブル・給与計算からも削除されます。希望は残ります）`)) return;
     remove("shift", ids);
   };
-  const adopt = (list) => {
+  const adopt = (list, who = "") => {
     const target = list.filter((r) => !hasShift(r));
     if (!target.length) return alert("反映対象の希望はありません（すでにシフト登録済みです）");
-    if (!window.confirm(`${target.length}件の希望をシフトに反映しますか？`)) return;
+    if (!window.confirm(`${who ? `${who}の` : ""}希望 ${target.length}件 をシフトに反映しますか？`)) return;
     save("shift", target.map((r) => shiftFromRequest(r, settings)));
   };
+
+  // 個人別グループ
+  const byStaff = rows.reduce((o, r) => ((o[r.staffId] ||= []).push(r), o), {});
+  const staffIds = Object.keys(byStaff).sort((a, b) => sortStaff(staffMap[a] || { name: "" }, staffMap[b] || { name: "" }));
+  const togglePick = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const pickedRows = staffIds.filter((id) => picked.has(id)).flatMap((id) => byStaff[id]);
 
   // 日付別グループ
   const byDate = rows.reduce((o, r) => ((o[r.date] ||= []).push(r), o), {});
@@ -61,15 +68,64 @@ export default function RequestList({ store, settings, depts, ctx }) {
         {dateFilter && <button className="btn tiny ghost" onClick={() => setDateFilter("")}>日付指定解除</button>}
         <div className="seg">
           <button className={view === "date" ? "on" : ""} onClick={() => setView("date")}>日付別</button>
+          <button className={view === "staff" ? "on" : ""} onClick={() => setView("staff")}>個人別</button>
           <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>一覧</button>
           <button className={view === "missing" ? "on" : ""} onClick={() => setView("missing")}>未提出者</button>
         </div>
-        {view !== "missing" && <label className="inline"><input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />希望者がいない日も表示</label>}
+        {(view === "date" || view === "list") && <label className="inline"><input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />希望者がいない日も表示</label>}
         <span className="muted">{rows.length}件</span>
         <button className="btn small primary" onClick={() => adopt(rows)} disabled={!rows.length}>表示中の希望をすべてシフトに反映</button>
       </div>
 
-      {view === "missing" ? (
+      {view === "staff" ? (
+        <>
+          <div className="card row wrap">
+            <label className="inline"><input type="checkbox" checked={staffIds.length > 0 && staffIds.every((id) => picked.has(id))}
+              onChange={(e) => setPicked(e.target.checked ? new Set(staffIds) : new Set())} />全員を選択</label>
+            <span className="muted small">{picked.size ? `${[...picked].filter((id) => byStaff[id]).length}名を選択中` : "スタッフを選んでまとめて反映できます"}</span>
+            <button className="btn small primary" disabled={!pickedRows.length} onClick={() => adopt(pickedRows, `選択した${[...picked].filter((id) => byStaff[id]).length}名`)}>選択した人の希望を一括反映</button>
+            <button className="btn small" disabled={!pickedRows.some(hasShift)} onClick={() => unadopt(pickedRows.filter(hasShift))}>選択した人の登録を解除</button>
+          </div>
+          {!staffIds.length ? <div className="card muted center">希望はありません</div> : (
+            <div className="date-groups">
+              {staffIds.map((id) => {
+                const list = byStaff[id], st = staffMap[id] || {};
+                const done = list.filter(hasShift).length;
+                return (
+                  <div key={id} className={`card date-card ${picked.has(id) ? "picked" : ""}`}>
+                    <div className="row between wrap">
+                      <label className="inline staff-head">
+                        <input type="checkbox" checked={picked.has(id)} onChange={() => togglePick(id)} />
+                        <b>{st.name || "(削除済)"}</b>
+                        <span className="muted small">{st.category} ／ 希望 {list.length}件・登録済 {done}件</span>
+                      </label>
+                      <div className="row">
+                        <button className="btn tiny primary" disabled={done === list.length} onClick={() => adopt(list, `${st.name} さん`)}>この人の希望を一括反映</button>
+                        {done > 0 && <button className="btn tiny ghost" onClick={() => unadopt(list.filter(hasShift))}>登録を解除</button>}
+                      </div>
+                    </div>
+                    <table className="tbl compact">
+                      <tbody>
+                        {list.map((r) => (
+                          <tr key={r.id}>
+                            <td className={`wd${weekdayOf(r.date)} nowrap`}>{fmtDate(r.date)}</td>
+                            <td><span className="dept-dot" style={{ background: deptMap[r.deptId]?.color }} />{deptMap[r.deptId]?.name || "-"}</td>
+                            <td className="nowrap">{r.allDay ? "終日可" : `${shortTime(r.start)}〜${shortTime(r.end)}`}</td>
+                            <td className="small">{r.note}</td>
+                            <td className="nowrap">{hasShift(r)
+                              ? <><span className="tag green">登録済</span><button className="btn tiny ghost" onClick={() => unadopt([r])}>解除</button></>
+                              : <button className="btn tiny" onClick={() => save("shift", shiftFromRequest(r, settings))}>反映</button>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : view === "missing" ? (
         <div className="card">
           <h3>{fmtMonth(ctx.month)} 希望未提出者</h3>
           {notSubmitted.map(({ dept, staff }) => dept && (

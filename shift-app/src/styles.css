@@ -272,3 +272,8 @@ select.time { padding: 5px 4px; }
 .steps li { margin: 6px 0; }
 .topbar { padding-top: max(10px, env(safe-area-inset-top)); }
 @media (max-width: 640px) { .install-btn { padding: 4px 6px; font-size: 12px; } .topbar nav { flex-wrap: wrap; justify-content: flex-end; } }
+
+/* 個人別の一括反映 */
+.date-card.picked { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+.staff-head { gap: 6px; flex-wrap: wrap; }
+.adopt-one { font-size: 10px; padding: 0 5px; margin-left: 4px; background: var(--req); border-color: #e7cf6a; color: #6b5300; }

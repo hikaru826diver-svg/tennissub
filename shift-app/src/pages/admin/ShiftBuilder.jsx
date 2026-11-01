@@ -144,6 +144,13 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
                         <div className="row between">
                           <b>{st.name}</b>
                           {st.manual && <button className="btn tiny ghost" title="この月のシフト表から外す" onClick={() => removeFromRoster(dept.id, st)}>✕</button>}
+                          {(() => {
+                            const pend = viewReqs.filter((r) => r.staffId === st.id && r.deptId === dept.id && !cellShifts(st.id, r.date, dept.id).length);
+                            return pend.length > 0 && (
+                              <button className="btn tiny adopt-one" title="この人の未反映の希望をすべてシフトに反映"
+                                onClick={() => window.confirm(`${st.name} さんの未反映の希望 ${pend.length}件 をシフトに反映しますか？`) && save("shift", pend.map((r) => shiftFromRequest(r, settings)))}>希望反映 {pend.length}</button>
+                            );
+                          })()}
                         </div>
                         <div className="small muted">{st.category} {yen(st.wage)} {st.extra && <span className="tag">応援</span>}</div>
                       </td>

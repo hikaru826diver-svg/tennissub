@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addTask, copyShiftTo, daysInMonth, WEEK, autoPlaceBreak, breaksText, normalizeTasks, taskAt, taskColor, fmtDate, hours, inBreak, legalBreak, shortTime, sortStaff, toHHMM, toMin, weekdayOf, withBreaks } from "../../utils.js";
+import { addTask, taskSegSlots, copyShiftTo, daysInMonth, WEEK, autoPlaceBreak, breaksText, normalizeTasks, taskAt, taskColor, fmtDate, hours, inBreak, legalBreak, shortTime, sortStaff, toHHMM, toMin, weekdayOf, withBreaks } from "../../utils.js";
 import { exportTimetable } from "../../excel.js";
 import { CalendarPicker, Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
@@ -186,7 +186,7 @@ export default function Timetable({ store, settings, depts, ctx }) {
                               onMouseDown={on ? (e) => onSlotDown(s, m, e) : undefined}
                               onMouseEnter={on ? () => onSlotEnter(s, m) : undefined}
                             >
-                              {taskStart && <span className="task-label" style={{ maxWidth: Math.max(14, ((toMin(task.end) - m) / SLOT) * 14 - 4) }}>{task.label}</span>}
+                              {taskStart && <span className="task-label" style={{ width: taskSegSlots(s, m, SLOT) * 14 }}><span className="task-text">{[...task.label].map((c, k) => <span key={k}>{c}</span>)}</span></span>}
                             </td>
                           );
                         })}

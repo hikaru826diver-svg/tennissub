@@ -1,5 +1,5 @@
 // ===== Excel 出力（exceljs を必要時に読み込み） =====
-import { aggregate, breaksText, calcPayroll, datesBetween, payMonthOf, inBreak, taskAt, taskColor, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
+import { aggregate, taskSegSlots, breaksText, calcPayroll, datesBetween, payMonthOf, inBreak, taskAt, taskColor, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
 
 const THIN = { style: "thin", color: { argb: "FFBFBFBF" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
@@ -169,6 +169,7 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
     ws.getColumn(3).width = 12;
     slots.forEach((_, i) => (ws.getColumn(C0 + i).width = 1.6));
 
+    const taskRows = new Set(); // 業務がある行（縦書きのため高くする）
     let r = 3;
     for (const dept of depts) {
       const list = dayShifts.filter((s) => s.deptId === dept.id).sort((a, b) => a.start.localeCompare(b.start));
@@ -198,6 +199,7 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
         ws.getCell(r, 3).font = { size: 8 };
         ws.getCell(r, 3).alignment = { wrapText: true, vertical: "middle" };
         const st = toMin(s.start), en = toMin(s.end);
+        let hasTask = false;
         slots.forEach((m, i) => {
           if (m >= st && m < en) {
             const cell = ws.getCell(r, C0 + i);
@@ -206,12 +208,17 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
               ? { type: "pattern", pattern: "lightUp", fgColor: { argb: argb(dept.color) }, bgColor: { argb: "FFFFFFFF" } }
               : { type: "pattern", pattern: "solid", fgColor: { argb: argb(task ? taskColor(task.label, settings.taskLabels || []) : dept.color) } };
             if (task && (m === toMin(task.start) || m === st || inBreak(s, m - SLOT))) {
+              // 業務名は縦書き・区間を結合して中央に表示
+              const n = taskSegSlots(s, m, SLOT);
+              if (n > 1) ws.mergeCells(r, C0 + i, r, C0 + i + n - 1);
               cell.value = task.label;
               cell.font = { size: 8, bold: true };
-              cell.alignment = { vertical: "middle", horizontal: "left" };
+              cell.alignment = { vertical: "middle", horizontal: "center", textRotation: "vertical" };
+              hasTask = true;
             }
           }
         });
+        if (hasTask) taskRows.add(r);
         r++;
       }
       if (!list.length) {
@@ -236,7 +243,7 @@ export async function exportTimetable({ data, settings, depts, dates, month }) {
           const isHour = c >= C0 && (slots[c - C0] % 60 === 0);
           cell.border = { top: THIN, bottom: THIN, left: c < C0 || isHour ? THIN : undefined, right: c === lastCol ? THIN : undefined };
         }
-        ws.getRow(rr).height = 18;
+        ws.getRow(rr).height = taskRows.has(rr) ? 54 : 18;
       }
       r += 2;
     }

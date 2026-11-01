@@ -356,3 +356,13 @@ export function payMonthOf(date, closingDay) {
   if (c <= 0 || c >= 29) return ym;
   return Number(date.slice(8)) > c ? addMonths(ym, 1) : ym;
 }
+
+/** m から始まる業務の連続コマ数（休憩・別業務・勤務終了で区切る） */
+export function taskSegSlots(shift, m, slot = 15) {
+  const task = taskAt(shift, m);
+  if (!task) return 0;
+  const en = toMin(shift.end);
+  let n = 0;
+  for (let x = m; x < en && taskAt(shift, x) === task && !inBreak(shift, x); x += slot) n++;
+  return n;
+}

@@ -325,6 +325,10 @@ returns void language plpgsql security definer set search_path = public, extensi
 begin
   if not can_manage(p_facility_id) then raise exception 'permission denied'; end if;
   if p_pin !~ '^\d{4,8}$' then raise exception 'invalid pin format'; end if;
+  -- 同じ数字の繰り返し・連番（0000、1234、9876 など）は推測されやすいため拒否
+  if p_pin ~ '^(\d)\1+$' or position(p_pin in '0123456789') > 0 or position(p_pin in '9876543210') > 0 then
+    raise exception 'weak pin';
+  end if;
   if not exists (select 1 from shift_records where facility_id = p_facility_id and kind = 'staff' and id = p_staff_id) then
     raise exception 'staff not found';
   end if;

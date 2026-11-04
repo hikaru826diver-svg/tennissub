@@ -287,3 +287,6 @@ select.time { padding: 5px 4px; }
 .mfa-qr { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
 .mfa-secret { display: inline-block; word-break: break-all; background: #f1f4f9; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
 .mfa-enroll { display: flex; flex-direction: column; gap: 10px; }
+.pin-form { display: flex; flex-direction: column; gap: 10px; }
+.pin-input.small-pin { font-size: 16px; letter-spacing: 3px; width: 150px; }
+.pin-field { border-top: 1px dashed var(--line); padding-top: 10px; }

@@ -49,7 +49,7 @@ export function describeAudit(a, staffName, deptName) {
     case "roster":
       return `${deptName(r.deptId)} ${r.month || ""}`;
     case "pin":
-      return `${staffName(a.record_id)} のPINを${a.action === "delete" ? "削除" : "発行・再発行"}`;
+      return `${staffName(a.record_id)} のPINを${a.action === "delete" ? "削除" : "設定"}`;
     case "member":
       return r.email || a.record_id || "";
     case "facility":

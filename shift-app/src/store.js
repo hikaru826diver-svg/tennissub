@@ -221,6 +221,7 @@ const local = {
   },
   async setPin(fid, staffId, pin) {
     if (!/^\d{4,8}$/.test(pin)) throw new Error("PINは4〜8桁の数字にしてください");
+    if (/^(\d)\1+$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) throw new Error("同じ数字の繰り返しや連番（0000・1234 など）は推測されやすいため使えません");
     const all = lsLoad();
     const salt = uid();
     all.pins ||= {};
@@ -313,6 +314,7 @@ function friendly(e) {
   if (/user not found/i.test(m)) return "そのメールアドレスのユーザーが見つかりません（先に Supabase でユーザーを作成してください）";
   if (/mfa required first/i.test(m)) return "先にご自身の二段階認証を設定・確認してから必須にしてください";
   if (/invalid pin format/i.test(m)) return "PINは4〜8桁の数字にしてください";
+  if (/weak pin/i.test(m)) return "同じ数字の繰り返しや連番（0000・1234 など）は推測されやすいため使えません";
   if (/permission denied|row-level security/i.test(m)) return "この操作を行う権限がありません（二段階認証が必須の場合は、先に二段階認証を行ってください）";
   return m;
 }

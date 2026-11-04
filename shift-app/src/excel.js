@@ -103,7 +103,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
     // 集計行
     const sumRows = [
       ["出勤人数", (d) => new Set(shifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""],
-      ["労働時間", (d) => { const m = deptPay.filter((p) => p.date === d).reduce((s, p) => s + p.workMin, 0); return m ? m / 1440 : ""; }],
+      ["労働時間", (d) => { const m = deptPay.filter((p) => p.date === d).reduce((s, p) => s + p.workMin, 0); return m ? Math.round((m / 60) * 100) / 100 : ""; }],
       ["人件費", (d) => deptPay.filter((p) => p.date === d).reduce((s, p) => s + p.total, 0) || ""],
     ];
     const tot = aggregate(deptPay, () => "t").t;
@@ -128,7 +128,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
       ws.getCell(rr, 3 + days.length + 1).numFmt = '0.00"h"';
       ws.getCell(rr, 3 + days.length + 2).numFmt = "¥#,##0";
     }
-    for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 2, c).numFmt = "[hh]:mm"; // 労働時間の行
+    for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 2, c).numFmt = '0.00"h"'; // 労働時間の行（給与計算と同じ形式）
     for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 1, c).numFmt = "¥#,##0"; // 人件費の行
     for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 1, c).font = { size: 8 };
     ws.getColumn(1).width = 14;

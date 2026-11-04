@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { aggregate, hm, hours, breaksText, normalizeTasks, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
+import { aggregate, hours, breaksText, normalizeTasks, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
 import { Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 import { exportShiftTable } from "../../excel.js";
@@ -191,7 +191,7 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
             </tr>
             <tr>
               <th className="sticky name-col">労働時間</th>
-              {days.map((d) => <td key={d} className="c small num">{byDate[d] ? hm(byDate[d].workMin) : ""}</td>)}
+              {days.map((d) => <td key={d} className="c small num">{byDate[d] ? hours(byDate[d].workMin) : ""}</td>)}
               <td colSpan={3} />
             </tr>
             <tr>

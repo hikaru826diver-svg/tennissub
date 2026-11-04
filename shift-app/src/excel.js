@@ -74,7 +74,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
       ws.getCell(4, c).value = WEEK[weekdayOf(d)];
       ws.getCell(3, c).font = ws.getCell(4, c).font = { bold: true, color: { argb: wdColor(d) } };
     });
-    ["出勤日数", "実働時間", "給与概算"].forEach((t, i) => {
+    ["出勤日数", "実働", "給与概算"].forEach((t, i) => {
       ws.getCell(3, 3 + days.length + i).value = t;
       ws.mergeCells(3, 3 + days.length + i, 4, 3 + days.length + i);
     });
@@ -95,7 +95,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
       });
       const a = byStaff[st.id];
       ws.getCell(r, 3 + days.length).value = a?.days.size || 0;
-      ws.getCell(r, 4 + days.length).value = (a?.workMin || 0) / 1440; // 時間は「00:00」形式（[h]:mm）
+      ws.getCell(r, 4 + days.length).value = Math.round(((a?.workMin || 0) / 60) * 100) / 100; // 給与計算と同じ「時間（小数）」
       ws.getCell(r, 5 + days.length).value = a?.total || 0;
       ws.getRow(r).height = 30;
       r++;
@@ -113,7 +113,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
       days.forEach((d, i) => (ws.getCell(r, 3 + i).value = fn(d)));
       if (k === 0) {
         ws.getCell(r, 3 + days.length).value = tot?.days.size || 0;
-        ws.getCell(r, 4 + days.length).value = (tot?.workMin || 0) / 1440;
+        ws.getCell(r, 4 + days.length).value = Math.round(((tot?.workMin || 0) / 60) * 100) / 100;
         ws.getCell(r, 5 + days.length).value = tot?.total || 0;
       }
       styleRange(ws, r, 1, r, lastCol, { fill: HEAD_FILL });
@@ -125,7 +125,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
     for (let rr = 5; rr < r; rr++) {
       for (let c = 3; c < 3 + days.length; c++) ws.getCell(rr, c).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
       ws.getCell(rr, 1).alignment = { vertical: "middle" };
-      ws.getCell(rr, 3 + days.length + 1).numFmt = "[hh]:mm";
+      ws.getCell(rr, 3 + days.length + 1).numFmt = '0.00"h"';
       ws.getCell(rr, 3 + days.length + 2).numFmt = "¥#,##0";
     }
     for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 2, c).numFmt = "[hh]:mm"; // 労働時間の行

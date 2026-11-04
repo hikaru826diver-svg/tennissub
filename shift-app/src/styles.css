@@ -187,7 +187,8 @@ select.time { padding: 5px 4px; }
 .grid-tbl td.cell.wd0:not(.shift):not(.req):not(.diff) { background: #fff6f6; }
 .grid-tbl td.cell.wd6:not(.shift):not(.req):not(.diff) { background: #f5f8ff; }
 .req-text { color: #8a6d00; }
-.tiny-num { font-size: 10px; }
+.tiny-num { font-size: 10px; letter-spacing: -0.2px; white-space: nowrap; }
+.grid-tbl td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* タイムテーブル */
 .tt-title { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--line); }

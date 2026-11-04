@@ -366,3 +366,9 @@ export function taskSegSlots(shift, m, slot = 15) {
   for (let x = m; x < en && taskAt(shift, x) === task && !inBreak(shift, x); x += slot) n++;
   return n;
 }
+
+/** 分 → "00:00" 形式（24時間を超える合計もそのまま表示。例：136:15） */
+export const hm = (min) => {
+  const m = Math.round(min || 0);
+  return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+};

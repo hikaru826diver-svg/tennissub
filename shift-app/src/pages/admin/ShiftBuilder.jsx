@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { aggregate, breaksText, normalizeTasks, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, hours, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
+import { aggregate, hm, breaksText, normalizeTasks, calcPayroll, rosterStaff, withBreaks, daysInMonth, fmtDate, legalBreak, shiftFromRequest, sortStaff, timeOptions, toMin, uid, weekdayOf, WEEK, yen } from "../../utils.js";
 import { Modal, MonthInput } from "../../components.jsx";
 import { TimeSelect } from "../StaffEntry.jsx";
 import { exportShiftTable } from "../../excel.js";
@@ -133,7 +133,7 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
                   <tr className="dept-row">
                     <th className="sticky name-col"><span className="dept-dot" style={{ background: dept.color }} />{dept.name}</th>
                     {days.map((d) => <td key={d} className="c small">{new Set(dShifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""}</td>)}
-                    <td className="r small">{dTot?.days.size || 0}</td><td className="r small">{hours(dTot?.workMin)}</td><td className="r small">{yen(dTot?.total)}</td>
+                    <td className="r small">{dTot?.days.size || 0}</td><td className="r small">{hm(dTot?.workMin)}</td><td className="r small">{yen(dTot?.total)}</td>
                   </tr>
                 )}
                 {rows.map((st) => {
@@ -167,7 +167,7 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
                         );
                       })}
                       <td className="r nowrap">{a?.days.size || 0}日</td>
-                      <td className="r nowrap">{hours(a?.workMin)}</td>
+                      <td className="r nowrap">{hm(a?.workMin)}</td>
                       <td className="r nowrap">{yen(a?.total)}</td>
                     </tr>
                   );
@@ -187,16 +187,16 @@ export default function ShiftBuilder({ store, settings, depts, ctx }) {
             <tr>
               <th className="sticky name-col">出勤人数{isAll && "（全部門）"}</th>
               {days.map((d) => <td key={d} className="c">{new Set(viewShifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""}</td>)}
-              <td className="r">{total?.days.size || 0}</td><td className="r">{hours(total?.workMin)}</td><td className="r">{yen(total?.total)}</td>
+              <td className="r">{total?.days.size || 0}</td><td className="r">{hm(total?.workMin)}</td><td className="r">{yen(total?.total)}</td>
             </tr>
             <tr>
               <th className="sticky name-col">労働時間</th>
-              {days.map((d) => <td key={d} className="c small">{byDate[d] ? (byDate[d].workMin / 60).toFixed(1) : ""}</td>)}
+              {days.map((d) => <td key={d} className="c small num">{byDate[d] ? hm(byDate[d].workMin) : ""}</td>)}
               <td colSpan={3} />
             </tr>
             <tr>
               <th className="sticky name-col">人件費</th>
-              {days.map((d) => <td key={d} className="c tiny-num">{byDate[d] ? Math.round(byDate[d].total / 1000) + "k" : ""}</td>)}
+              {days.map((d) => <td key={d} className="c tiny-num num">{byDate[d] ? yen(byDate[d].total) : ""}</td>)}
               <td colSpan={3} />
             </tr>
           </tfoot>
@@ -285,7 +285,7 @@ function ShiftModal({ staffId, date, staff, deptId, shifts, reqs, otherDept, dep
             </select>
           </label>
           {s.breaks?.length > 0 && <span className="small">（{breaksText(s.breaks, true)}）</span>}
-          <span className="muted small">実働 {hours(toMin(s.end) - toMin(s.start) - s.breakMin)}</span>
+          <span className="muted small">実働 {hm(toMin(s.end) - toMin(s.start) - s.breakMin)}</span>
           {toMin(s.end) - toMin(s.start) - s.breakMin > 480 && <span className="tag red">8h超</span>}
           {s.breakMin < legalBreak(toMin(s.end) - toMin(s.start)) && <span className="tag red">法定休憩不足</span>}
           <button className="btn tiny ghost" onClick={() => setList((l) => l.filter((_, k) => k !== i))}>✕</button>

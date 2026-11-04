@@ -95,7 +95,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
       });
       const a = byStaff[st.id];
       ws.getCell(r, 3 + days.length).value = a?.days.size || 0;
-      ws.getCell(r, 4 + days.length).value = a ? Math.round((a.workMin / 60) * 100) / 100 : 0;
+      ws.getCell(r, 4 + days.length).value = (a?.workMin || 0) / 1440; // 時間は「00:00」形式（[h]:mm）
       ws.getCell(r, 5 + days.length).value = a?.total || 0;
       ws.getRow(r).height = 30;
       r++;
@@ -103,7 +103,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
     // 集計行
     const sumRows = [
       ["出勤人数", (d) => new Set(shifts.filter((s) => s.date === d).map((s) => s.staffId)).size || ""],
-      ["労働時間", (d) => { const m = deptPay.filter((p) => p.date === d).reduce((s, p) => s + p.workMin, 0); return m ? Math.round((m / 60) * 10) / 10 : ""; }],
+      ["労働時間", (d) => { const m = deptPay.filter((p) => p.date === d).reduce((s, p) => s + p.workMin, 0); return m ? m / 1440 : ""; }],
       ["人件費", (d) => deptPay.filter((p) => p.date === d).reduce((s, p) => s + p.total, 0) || ""],
     ];
     const tot = aggregate(deptPay, () => "t").t;
@@ -113,7 +113,7 @@ export async function exportShiftTable({ data, settings, depts, month }) {
       days.forEach((d, i) => (ws.getCell(r, 3 + i).value = fn(d)));
       if (k === 0) {
         ws.getCell(r, 3 + days.length).value = tot?.days.size || 0;
-        ws.getCell(r, 4 + days.length).value = tot ? Math.round((tot.workMin / 60) * 100) / 100 : 0;
+        ws.getCell(r, 4 + days.length).value = (tot?.workMin || 0) / 1440;
         ws.getCell(r, 5 + days.length).value = tot?.total || 0;
       }
       styleRange(ws, r, 1, r, lastCol, { fill: HEAD_FILL });
@@ -125,14 +125,15 @@ export async function exportShiftTable({ data, settings, depts, month }) {
     for (let rr = 5; rr < r; rr++) {
       for (let c = 3; c < 3 + days.length; c++) ws.getCell(rr, c).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
       ws.getCell(rr, 1).alignment = { vertical: "middle" };
-      ws.getCell(rr, 3 + days.length + 1).numFmt = "0.00";
-      ws.getCell(rr, 3 + days.length + 2).numFmt = "#,##0";
+      ws.getCell(rr, 3 + days.length + 1).numFmt = "[hh]:mm";
+      ws.getCell(rr, 3 + days.length + 2).numFmt = "¥#,##0";
     }
-    for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 1, c).numFmt = "#,##0";
+    for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 2, c).numFmt = "[hh]:mm"; // 労働時間の行
+    for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 1, c).numFmt = "¥#,##0"; // 人件費の行
     for (let c = 3; c < 3 + days.length; c++) ws.getCell(r - 1, c).font = { size: 8 };
     ws.getColumn(1).width = 14;
     ws.getColumn(2).width = 8;
-    days.forEach((_, i) => (ws.getColumn(3 + i).width = 6.4));
+    days.forEach((_, i) => (ws.getColumn(3 + i).width = 7.2));
     ws.getColumn(3 + days.length).width = 8;
     ws.getColumn(4 + days.length).width = 9;
     ws.getColumn(5 + days.length).width = 11;

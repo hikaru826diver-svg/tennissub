@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, thisMonth, timeOptions, toMin, today, uid, weekdayOf, WEEK } from "../utils.js";
 import { CalendarPicker, MonthInput } from "../components.jsx";
-import { getSettings, usePortal } from "../store.js";
+import { getSettings, PinError, usePortal } from "../store.js";
 
 const LAST_KEY = "shift-app-last-staff";
+const pinKey = (code, staffId) => `shift-app-pin:${code}:${staffId}`;
+const loadPin = (code, staffId) => { try { return (staffId && localStorage.getItem(pinKey(code, staffId))) || ""; } catch { return ""; } };
+const savePin = (code, staffId, pin) => { try { pin ? localStorage.setItem(pinKey(code, staffId), pin) : localStorage.removeItem(pinKey(code, staffId)); } catch { /* ignore */ } };
 
 export default function StaffEntry({ backend, code, onChangeFacility, onTitle }) {
   const lastKey = `${LAST_KEY}:${code}`;
@@ -12,9 +15,25 @@ export default function StaffEntry({ backend, code, onChangeFacility, onTitle })
   })();
   const [deptId, setDeptId] = useState(last.deptId || "");
   const [staffId, setStaffId] = useState(last.staffId || "");
-  const portal = usePortal(backend, code, staffId);
+  const [pin, setPin] = useState(() => loadPin(code, last.staffId));
+  const [pinInput, setPinInput] = useState("");
+  const [remember, setRemember] = useState(true);
+  useEffect(() => { setPin(loadPin(code, staffId)); setPinInput(""); }, [code, staffId]);
+  const portal = usePortal(backend, code, staffId, pin);
   const { data } = portal;
   const settings = getSettings(data, portal.facility);
+  const requirePin = settings.requirePin !== false;
+  const unlocked = !requirePin || portal.verified;
+  // 記憶していたPINが無効になった場合は消す
+  useEffect(() => { if (portal.pinError && pin) savePin(code, staffId, ""); }, [portal.pinError]); // eslint-disable-line
+  const confirmPin = (e) => {
+    e?.preventDefault();
+    if (!/^\d{4,8}$/.test(pinInput)) return;
+    if (pinInput === pin) portal.retry(); // 同じPINでも再確認する
+    else setPin(pinInput);
+    if (remember) savePin(code, staffId, pinInput);
+  };
+  const forgetPin = () => { savePin(code, staffId, ""); setPin(""); setPinInput(""); };
   const col = settings.collection;
   const depts = [...data.department].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   useEffect(() => { if (portal.facility) onTitle?.(settings.orgName); }, [portal.facility, settings.orgName]); // eslint-disable-line
@@ -92,6 +111,7 @@ export default function StaffEntry({ backend, code, onChangeFacility, onTitle })
       setNote("");
       setMsg({ type: "ok", text: `${recs.length}日分のシフト希望を提出しました。${replaced.length ? `（${replaced.length}件を上書き）` : ""}` });
     } catch (e) {
+      if (e instanceof PinError) forgetPin();
       setMsg({ type: "error", text: `送信に失敗しました：${e.message || "通信環境を確認して再度お試しください。"}` });
     } finally {
       setSending(false);
@@ -148,7 +168,25 @@ export default function StaffEntry({ backend, code, onChangeFacility, onTitle })
             </div>
           </div>
 
-          {deptId && staffId && (
+          {deptId && staffId && requirePin && !portal.verified && (
+            <form className="card pin-card" onSubmit={confirmPin}>
+              <h3>🔒 本人確認</h3>
+              <p className="small muted">施設から受け取った個人PIN（4〜8桁の数字）を入力してください。</p>
+              {portal.pinError && (pin || portal.pinError.code !== "invalid pin") && <div className="banner error">{portal.pinError.message}</div>}
+              <div className="row wrap">
+                <input id="staff-pin" className="pin-input" type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={8}
+                  value={pinInput} onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))} placeholder="PIN" autoFocus />
+                <button className="btn primary" disabled={!/^\d{4,8}$/.test(pinInput)}>確認</button>
+              </div>
+              <label className="inline small"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />この端末にPINを記憶する（共用の端末ではチェックを外してください）</label>
+            </form>
+          )}
+
+          {deptId && staffId && unlocked && requirePin && (
+            <div className="small muted pin-ok">🔓 本人確認済み <button className="btn tiny ghost" onClick={forgetPin}>この端末からPINを消す</button></div>
+          )}
+
+          {deptId && staffId && unlocked && (
             closed ? (
               <div className="card muted">現在シフト希望の受付は終了しています。</div>
             ) : (
@@ -214,7 +252,7 @@ export default function StaffEntry({ backend, code, onChangeFacility, onTitle })
             )
           )}
 
-          {staffId && (
+          {staffId && unlocked && (
             <div className="card">
               <h3>提出済みの希望（{fmtMonth(month)}）</h3>
               {!mine.length ? (

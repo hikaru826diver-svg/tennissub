@@ -277,3 +277,13 @@ select.time { padding: 5px 4px; }
 .date-card.picked { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
 .staff-head { gap: 6px; flex-wrap: wrap; }
 .adopt-one { font-size: 10px; padding: 0 5px; margin-left: 4px; background: var(--req); border-color: #e7cf6a; color: #6b5300; }
+
+/* セキュリティ：個人PIN・二段階認証 */
+.pin-card { border-color: #cfdcf7; background: #f6f9ff; }
+.pin-input { font-size: 22px; letter-spacing: 6px; width: 170px; text-align: center; font-variant-numeric: tabular-nums; }
+.pin-ok { margin: -6px 0 10px; }
+.pin-show { font-size: 18px; font-weight: 700; letter-spacing: 3px; font-variant-numeric: tabular-nums; }
+.pin-bar { background: #f6f9ff; }
+.mfa-qr { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+.mfa-secret { display: inline-block; word-break: break-all; background: #f1f4f9; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
+.mfa-enroll { display: flex; flex-direction: column; gap: 10px; }

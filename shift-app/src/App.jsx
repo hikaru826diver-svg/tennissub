@@ -66,7 +66,7 @@ export default function App() {
       {!online && <div className="banner warn">オフラインです。通信が回復すると最新の内容を読み込みます（オフライン中は保存できません）。</div>}
       {import.meta.env.VITE_DEMO ? (
         <div className="banner warn">
-          デモ版：サンプルの2施設（体育館・市民プール）入りで自由に操作できます。本部としてログイン済みです。変更はこのブラウザ内にのみ保存され、Excelのダウンロードは動作しません。
+          デモ版：サンプルの2施設（体育館・市民プール）入りで自由に操作できます。本部としてログイン済みです。スタッフの個人PINは全員「1111」です。変更はこのブラウザ内にのみ保存され、Excelのダウンロードは動作しません。
           <button className="btn tiny" style={{ marginLeft: 8 }} onClick={() => { resetLocal(); window.location.reload(); }}>サンプルを初期状態に戻す</button>
         </div>
       ) : backend?.name === "local" && (

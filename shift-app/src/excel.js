@@ -340,3 +340,19 @@ export async function exportPayroll({ data, settings, depts, from, to, label }) 
   }
   await download(wb, `給与集計_${from}_${to}.xlsx`);
 }
+
+// ---------- 操作履歴 ----------
+export async function exportAudit({ facility, rows, kindLabel, actionLabel }) {
+  const wb = await newBook();
+  const ws = wb.addWorksheet("操作履歴", { views: [{ state: "frozen", ySplit: 3 }], pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  ws.getCell(1, 1).value = `${facility.name}　操作履歴（出力日時：${new Date().toLocaleString("ja-JP")}）`;
+  ws.getCell(1, 1).font = { size: 14, bold: true };
+  ws.addRow([]);
+  ws.addRow(["日時", "操作者", "操作", "種類", "内容"]);
+  rows.forEach((a) => ws.addRow([new Date(a.at).toLocaleString("ja-JP"), a.actor, actionLabel[a.action] || a.action, kindLabel[a.kind] || a.kind, a.summary]));
+  styleRange(ws, 3, 1, 3, 5, { fill: HEAD_FILL, font: { bold: true } });
+  styleRange(ws, 3, 1, ws.rowCount, 5, { border: BORDER });
+  [20, 26, 8, 16, 80].forEach((w, i) => (ws.getColumn(i + 1).width = w));
+  ws.getColumn(5).alignment = { wrapText: true, vertical: "top" };
+  await download(wb, `操作履歴_${facility.code}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}

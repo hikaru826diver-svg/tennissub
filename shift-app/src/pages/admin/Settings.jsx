@@ -37,16 +37,21 @@ export default function Settings({ store, settings, facility, backend }) {
       categories: categoriesText.split(/[、,]/).map((s) => s.trim()).filter(Boolean),
       taskLabels: taskLabelsText.split(/[、,]/).map((s) => s.trim()).filter(Boolean),
       patterns,
+      lastBackupAt: settings.lastBackupAt, // バックアップ日時はフォームで上書きしない
     });
     setSaved(true);
   };
 
-  const backup = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const backup = async () => {
+    const blob = new Blob([JSON.stringify({ facility, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `shift-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `shift-backup-${facility.code}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.style.display = "none";
+    document.body.appendChild(a);
     a.click();
+    a.remove();
+    await save("setting", { ...settings, lastBackupAt: new Date().toISOString() });
   };
   const restore = async (file) => {
     if (!file) return;
@@ -114,6 +119,12 @@ export default function Settings({ store, settings, facility, backend }) {
       </div>
 
       <div className="card">
+        <h3>セキュリティ</h3>
+        <label className="inline"><input id="require-pin" type="checkbox" checked={f.requirePin !== false} onChange={(e) => set({ requirePin: e.target.checked })} />スタッフのシフト希望入力に個人PINを必須にする（推奨）</label>
+        <p className="small muted">PINは「スタッフマスタ」で発行します。無効にすると、施設のURLを知っている人は誰でもスタッフ名で希望を提出できます。</p>
+      </div>
+
+      <div className="card">
         <h3>給与計算ルール</h3>
         <div className="grid2">
           <label className="inline"><input type="checkbox" checked={f.overtimePremium} onChange={(e) => set({ overtimePremium: e.target.checked })} />時間外割増（1日8時間超）</label>
@@ -137,6 +148,7 @@ export default function Settings({ store, settings, facility, backend }) {
 
       <div className="card" style={{ marginTop: 20 }}>
         <h3>データ管理</h3>
+        <p className="small">前回のバックアップ：{settings.lastBackupAt ? new Date(settings.lastBackupAt).toLocaleString("ja-JP") : <span className="tag red">未実施</span>}（月1回以上、施設内の保管場所に保存することをおすすめします）</p>
         <div className="row wrap">
           <button className="btn small" onClick={backup}>バックアップ（JSON）をダウンロード</button>
           <label className="btn small">バックアップから復元<input type="file" accept=".json" hidden onChange={(e) => restore(e.target.files[0])} /></label>

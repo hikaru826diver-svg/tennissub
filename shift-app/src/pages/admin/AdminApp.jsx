@@ -9,6 +9,8 @@ import Timetable from "./Timetable.jsx";
 import Payroll from "./Payroll.jsx";
 import Settings from "./Settings.jsx";
 import FacilityManager from "./FacilityManager.jsx";
+import AuditLog from "./AuditLog.jsx";
+import { MfaVerify, MfaEnroll, SecurityModal } from "./Security.jsx";
 
 const TABS = [
   ["requests", "希望一覧"],
@@ -18,6 +20,7 @@ const TABS = [
   ["staff", "スタッフマスタ"],
   ["depts", "部門マスタ"],
   ["settings", "回収・各種設定"],
+  ["audit", "操作履歴"],
 ];
 
 /** 管理者画面の入口：ログイン → 施設の選択 → 各機能 */
@@ -27,13 +30,20 @@ export default function AdminGate({ backend, sub, onTitle }) {
   const [facilities, setFacilities] = useState(null);
   const [fid, setFid] = useState(lastAdminFacility.get());
   const [recovery, setRecovery] = useState(false);
+  const [mfa, setMfa] = useState(null); // { needVerify, needEnroll, ... }
+  const [secOpen, setSecOpen] = useState(false);
   const [err, setErr] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
       const s = await backend.getSession();
       setSession(s);
-      if (!s) { setFacilities(null); return; }
+      if (!s) { setFacilities(null); setMfa(null); return; }
+      if (backend.mfaSupported) {
+        const st = await backend.mfaState();
+        setMfa(st);
+        if (st.needVerify || st.needEnroll) return; // 二段階認証が済むまでデータは読み込まない
+      }
       setIsHq(await backend.isHq(s));
       setFacilities(await backend.listFacilities(s));
       setErr(null);
@@ -60,6 +70,8 @@ export default function AdminGate({ backend, sub, onTitle }) {
   if (session === undefined) return <div className="center muted" style={{ padding: 40 }}>読み込み中…</div>;
   if (recovery) return <PasswordReset backend={backend} onDone={() => setRecovery(false)} />;
   if (!session) return <AdminLogin backend={backend} onLogin={refresh} />;
+  if (mfa?.needVerify) return <MfaVerify backend={backend} factors={mfa.factors} onDone={refresh} onCancel={logout} />;
+  if (mfa?.needEnroll) return <MfaEnroll backend={backend} forced onDone={refresh} onCancel={logout} />;
   if (!facilities) return <div className="center muted" style={{ padding: 40 }}>{err ? <span className="banner error">{err}</span> : "読み込み中…"}</div>;
 
   const current = facilities.find((f) => f.id === fid) || facilities[0];
@@ -80,10 +92,12 @@ export default function AdminGate({ backend, sub, onTitle }) {
         </div>
         <div className="row wrap small">
           <span className="muted">{session.label}</span>
+          {backend.mfaSupported && <button className="btn tiny ghost" onClick={() => setSecOpen(true)}>🔐 二段階認証{mfa?.factors?.length ? "（設定済み）" : ""}</button>}
           <button className="btn tiny ghost" onClick={logout}>ログアウト</button>
         </div>
       </div>
       {err && <div className="banner error">{err}</div>}
+      {secOpen && <SecurityModal backend={backend} isHq={isHq} state={mfa} onChange={refresh} onClose={() => setSecOpen(false)} />}
       {!current && !isHq ? (
         <main className="page narrow"><div className="card">担当する施設が割り当てられていません。本部の管理者に、施設への割り当てを依頼してください。</div></main>
       ) : showManager ? (
@@ -99,6 +113,8 @@ export default function AdminGate({ backend, sub, onTitle }) {
     </div>
   );
 }
+
+const backupDue = (at) => !at || Date.now() - Date.parse(at) > 30 * 86400000;
 
 function SubNav({ sub, isHq }) {
   return (
@@ -129,12 +145,16 @@ function FacilityWorkspace({ backend, facility, sub, isHq, onTitle }) {
     staff: <StaffMaster {...props} />,
     depts: <DeptMaster {...props} />,
     settings: <Settings {...props} />,
+    audit: <AuditLog {...props} />,
   }[sub] || <RequestList {...props} />;
 
   return (
     <>
       <SubNav sub={sub} isHq={isHq} />
       {store.error && <div className="banner error">{store.error}</div>}
+      {!store.loading && depts.length > 0 && sub !== "settings" && backupDue(settings.lastBackupAt) && (
+        <div className="banner warn small">💾 {settings.lastBackupAt ? `前回のバックアップから${Math.floor((Date.now() - Date.parse(settings.lastBackupAt)) / 86400000)}日が経過しています。` : "この施設のデータはまだバックアップされていません。"}「<a href="#admin-settings">回収・各種設定</a>」の「データ管理」からバックアップを保存してください。</div>
+      )}
       {!store.loading && !depts.length && sub !== "depts" && sub !== "settings" && (
         <div className="banner warn">まず「<a href="#admin-depts">部門マスタ</a>」で部門を登録し、「<a href="#admin-staff">スタッフマスタ</a>」でスタッフを登録してください（「<a href="#admin-settings">回収・各種設定</a>」からサンプルデータも投入できます）。</div>
       )}

@@ -14,6 +14,15 @@ export const KINDS = ["department", "staff", "request", "shift", "setting", "ros
 
 export const supabase = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY) : null;
 const empty = () => KINDS.reduce((o, k) => ({ ...o, [k]: [] }), {});
+
+/** PIN 関連のエラー（画面で個別に案内する） */
+export class PinError extends Error {
+  constructor(code) {
+    super({ "pin not set": "PINが未発行です。施設の管理者にPINの発行を依頼してください。", "pin locked": "PINを5回続けて間違えたため、15分間ロックされています。時間をおいて再度お試しください。", "invalid pin": "PINが違います。", "pin required": "PINを入力してください。" }[code] || code);
+    this.code = code;
+  }
+}
+const AUDIT_MAX = 5000;
 const settingsId = (fid) => `settings:${fid}`;
 
 // ---- 保存用ユーティリティ ----
@@ -71,7 +80,18 @@ function migrateV1() {
 /** デモ用：データが空なら初期データを投入 */
 export function seedLocal(all) {
   const cur = lsLoad();
-  if (Object.keys(cur.facilities).length) return;
+  if (Object.keys(cur.facilities).length) return false;
+  lsSave(all);
+  return true;
+}
+/** デモ用：全スタッフに同じPINを設定（操作記録には残さない） */
+export async function seedDemoPins(pin) {
+  const all = lsLoad();
+  all.pins ||= {};
+  for (const st of Object.values(all.records.staff || {})) {
+    const salt = uid();
+    (all.pins[st.facilityId] ||= {})[st.id] = { salt, hash: await sha256(salt + pin), failed: 0, lockedUntil: null, updatedAt: new Date().toISOString() };
+  }
   lsSave(all);
 }
 export function resetLocal() {
@@ -87,7 +107,38 @@ const pickRecords = (all, fid) => {
   return out;
 };
 const publicStaff = (s) => ({ id: s.id, name: s.name, kana: s.kana, deptIds: s.deptIds, active: s.active });
-const publicSettings = (s = {}) => ({ id: s.id, orgName: s.orgName, dayStart: s.dayStart, dayEnd: s.dayEnd, stepMin: s.stepMin, collection: s.collection });
+const publicSettings = (s = {}) => ({ id: s.id, orgName: s.orgName, dayStart: s.dayStart, dayEnd: s.dayEnd, stepMin: s.stepMin, collection: s.collection, requirePin: s.requirePin !== false });
+
+// ---- localStorage：PIN（ハッシュで保存）と操作記録 ----
+async function sha256(text) {
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    let h = 0; for (const c of text) h = (h * 31 + c.charCodeAt(0)) >>> 0; return `x${h}`; // crypto が使えない環境用（デモ）
+  }
+}
+function localActor() {
+  try { return JSON.parse(safeSS.get(LS_SESSION))?.label || "管理者"; } catch { return "管理者"; }
+}
+function pushAudit(all, entry) {
+  all.audit ||= [];
+  all.audit.push({ id: uid(), at: new Date().toISOString(), actor: localActor(), ...entry });
+  if (all.audit.length > AUDIT_MAX) all.audit.splice(0, all.audit.length - AUDIT_MAX);
+}
+async function localCheckPin(all, fid, staffId, pin) {
+  const st = Object.values(all.records.setting || {}).find((r) => r.facilityId === fid) || {};
+  if (st.requirePin === false) return;
+  const p = all.pins?.[fid]?.[staffId];
+  if (!p) throw new PinError("pin not set");
+  if (p.lockedUntil && Date.parse(p.lockedUntil) > Date.now()) throw new PinError("pin locked");
+  if (!pin) throw new PinError("pin required"); // 未入力は失敗回数に数えない
+  if (p.hash === (await sha256(p.salt + (pin || "")))) { p.failed = 0; p.lockedUntil = null; lsSave(all); return; }
+  p.failed = (p.failed || 0) + 1;
+  if (p.failed >= 5) { p.failed = 0; p.lockedUntil = new Date(Date.now() + 15 * 60000).toISOString(); }
+  lsSave(all);
+  throw new PinError("invalid pin");
+}
 
 const local = {
   name: "local",
@@ -105,7 +156,7 @@ const local = {
     }
     const st = Object.values(all.records.setting || {}).find((r) => r.facilityId === facilityId) || {};
     if (pass !== (st.adminPass || "admin")) throw new Error("パスコードが違います");
-    const s = { role: "admin", facilityIds: [facilityId], label: all.facilities[facilityId]?.name };
+    const s = { role: "admin", facilityIds: [facilityId], label: `${all.facilities[facilityId]?.name || ""} 管理者` };
     safeSS.set(LS_SESSION, JSON.stringify(s));
     return s;
   },
@@ -140,14 +191,51 @@ const local = {
   async upsert(fid, kind, recs) {
     const all = lsLoad();
     all.records[kind] ||= {};
-    recs.forEach((r) => (all.records[kind][r.id] = { ...r, facilityId: fid }));
+    recs.forEach((r) => {
+      const before = all.records[kind][r.id];
+      const after = { ...r, facilityId: fid };
+      if (before && JSON.stringify(before) === JSON.stringify(after)) return;
+      all.records[kind][r.id] = after;
+      pushAudit(all, { facility_id: fid, action: before ? "update" : "insert", kind, record_id: r.id, before: before || null, after });
+    });
     lsSave(all);
   },
   async remove(fid, kind, ids) {
     const all = lsLoad();
-    ids.forEach((id) => { if (all.records[kind]?.[id]?.facilityId === fid) delete all.records[kind][id]; });
+    ids.forEach((id) => {
+      const before = all.records[kind]?.[id];
+      if (before?.facilityId !== fid) return;
+      delete all.records[kind][id];
+      pushAudit(all, { facility_id: fid, action: "delete", kind, record_id: id, before, after: null });
+    });
     lsSave(all);
   },
+  async listAudit(fid, { from } = {}) {
+    return (lsLoad().audit || []).filter((a) => a.facility_id === fid && (!from || a.at >= from)).reverse().slice(0, 1000);
+  },
+  // --- スタッフPIN ---
+  pinsSupported: true,
+  async pinStatus(fid) {
+    const pins = lsLoad().pins?.[fid] || {};
+    return Object.entries(pins).map(([staff_id, p]) => ({ staff_id, updated_at: p.updatedAt, locked: !!(p.lockedUntil && Date.parse(p.lockedUntil) > Date.now()) }));
+  },
+  async setPin(fid, staffId, pin) {
+    if (!/^\d{4,8}$/.test(pin)) throw new Error("PINは4〜8桁の数字にしてください");
+    const all = lsLoad();
+    const salt = uid();
+    all.pins ||= {};
+    all.pins[fid] ||= {};
+    all.pins[fid][staffId] = { salt, hash: await sha256(salt + pin), failed: 0, lockedUntil: null, updatedAt: new Date().toISOString() };
+    pushAudit(all, { facility_id: fid, action: "update", kind: "pin", record_id: staffId });
+    lsSave(all);
+  },
+  async clearPin(fid, staffId) {
+    const all = lsLoad();
+    if (all.pins?.[fid]) delete all.pins[fid][staffId];
+    pushAudit(all, { facility_id: fid, action: "delete", kind: "pin", record_id: staffId });
+    lsSave(all);
+  },
+  mfaSupported: false,
   // --- スタッフ用（ログイン不要） ---
   async portalGet(code) {
     const all = lsLoad();
@@ -161,33 +249,42 @@ const local = {
       setting: d.setting.map(publicSettings),
     };
   },
-  async portalRequests(code, staffId) {
+  async portalRequests(code, staffId, pin) {
     const all = lsLoad();
     const f = Object.values(all.facilities).find((x) => x.code === code);
     if (!f) return [];
+    await localCheckPin(all, f.id, staffId, pin);
     return pickRecords(all, f.id).request.filter((r) => r.staffId === staffId);
   },
-  async portalSubmit(code, staffId, recs, replaceIds) {
+  async portalSubmit(code, staffId, pin, recs, replaceIds) {
     const all = lsLoad();
     const f = Object.values(all.facilities).find((x) => x.code === code);
     if (!f) throw new Error("施設が見つかりません");
     const st = Object.values(all.records.setting || {}).find((r) => r.facilityId === f.id) || {};
     assertOpen(st.collection);
+    await localCheckPin(all, f.id, staffId, pin);
+    const actor = `スタッフ本人：${all.records.staff?.[staffId]?.name || ""}`;
+    const log = (e) => { all.audit ||= []; all.audit.push({ id: uid(), at: new Date().toISOString(), actor, facility_id: f.id, kind: "request", ...e }); };
     replaceIds.forEach((id) => {
       const r = all.records.request?.[id];
-      if (r && r.facilityId === f.id && r.staffId === staffId) delete all.records.request[id];
+      if (r && r.facilityId === f.id && r.staffId === staffId) { delete all.records.request[id]; log({ action: "delete", record_id: id, before: r, after: null }); }
     });
     all.records.request ||= {};
-    recs.forEach((r) => (all.records.request[r.id] = { ...r, staffId, facilityId: f.id }));
+    recs.forEach((r) => { const rec = { ...r, staffId, facilityId: f.id }; all.records.request[r.id] = rec; log({ action: "insert", record_id: r.id, before: null, after: rec }); });
     lsSave(all);
   },
-  async portalDelete(code, staffId, id) {
+  async portalDelete(code, staffId, pin, id) {
     const all = lsLoad();
     const f = Object.values(all.facilities).find((x) => x.code === code);
     const r = all.records.request?.[id];
     const st = Object.values(all.records.setting || {}).find((x) => x.facilityId === f?.id) || {};
     assertOpen(st.collection);
-    if (f && r && r.facilityId === f.id && r.staffId === staffId) delete all.records.request[id];
+    await localCheckPin(all, f?.id, staffId, pin);
+    if (f && r && r.facilityId === f.id && r.staffId === staffId) {
+      delete all.records.request[id];
+      all.audit ||= [];
+      all.audit.push({ id: uid(), at: new Date().toISOString(), actor: `スタッフ本人：${all.records.staff?.[staffId]?.name || ""}`, facility_id: f.id, kind: "request", action: "delete", record_id: id, before: r, after: null });
+    }
     lsSave(all);
   },
   // --- 管理者メンバー（ローカルでは各施設のパスコードで代用） ---
@@ -214,7 +311,9 @@ function friendly(e) {
   if (/facility not found/i.test(m)) return "施設が見つかりません。URLを確認してください。";
   if (/Invalid login credentials/i.test(m)) return "メールアドレスまたはパスワードが違います";
   if (/user not found/i.test(m)) return "そのメールアドレスのユーザーが見つかりません（先に Supabase でユーザーを作成してください）";
-  if (/permission denied|row-level security/i.test(m)) return "この操作を行う権限がありません";
+  if (/mfa required first/i.test(m)) return "先にご自身の二段階認証を設定・確認してから必須にしてください";
+  if (/invalid pin format/i.test(m)) return "PINは4〜8桁の数字にしてください";
+  if (/permission denied|row-level security/i.test(m)) return "この操作を行う権限がありません（二段階認証が必須の場合は、先に二段階認証を行ってください）";
   return m;
 }
 
@@ -286,11 +385,66 @@ const remote = {
     if (error) throw new Error(friendly(error));
   },
   async portalGet(code) { return await rpc("portal_get", { p_code: code }); },
-  async portalRequests(code, staffId) { return (await rpc("portal_requests", { p_code: code, p_staff_id: staffId })) || []; },
-  async portalSubmit(code, staffId, recs, replaceIds) {
-    await rpc("portal_submit", { p_code: code, p_staff_id: staffId, p_records: recs, p_replace_ids: replaceIds });
+  async portalRequests(code, staffId, pin) {
+    const r = await rpc("portal_requests", { p_code: code, p_staff_id: staffId, p_pin: pin || "" });
+    if (r && !Array.isArray(r) && r.error) throw new PinError(r.error);
+    return r || [];
   },
-  async portalDelete(code, staffId, id) { await rpc("portal_delete", { p_code: code, p_staff_id: staffId, p_id: id }); },
+  async portalSubmit(code, staffId, pin, recs, replaceIds) {
+    const r = await rpc("portal_submit", { p_code: code, p_staff_id: staffId, p_pin: pin || "", p_records: recs, p_replace_ids: replaceIds });
+    if (r?.error) throw new PinError(r.error);
+  },
+  async portalDelete(code, staffId, pin, id) {
+    const r = await rpc("portal_delete", { p_code: code, p_staff_id: staffId, p_pin: pin || "", p_id: id });
+    if (r?.error) throw new PinError(r.error);
+  },
+  // --- 操作記録 ---
+  async listAudit(fid, { from } = {}) {
+    let q = supabase.from("audit_logs").select("id,at,actor,action,kind,record_id,before,after").eq("facility_id", fid).order("at", { ascending: false }).limit(1000);
+    if (from) q = q.gte("at", from);
+    const { data, error } = await q;
+    if (error) throw new Error(friendly(error));
+    return data;
+  },
+  // --- スタッフPIN ---
+  pinsSupported: true,
+  async pinStatus(fid) { return (await rpc("staff_pin_status", { p_facility_id: fid })) || []; },
+  async setPin(fid, staffId, pin) { await rpc("set_staff_pin", { p_facility_id: fid, p_staff_id: staffId, p_pin: pin }); },
+  async clearPin(fid, staffId) { await rpc("clear_staff_pin", { p_facility_id: fid, p_staff_id: staffId }); },
+  // --- 二段階認証（TOTP） ---
+  mfaSupported: true,
+  async mfaState() {
+    const [{ data: aal }, { data: f }, { data: cfg }] = await Promise.all([
+      supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+      supabase.auth.mfa.listFactors(),
+      supabase.from("app_config").select("require_mfa").eq("id", 1).maybeSingle(),
+    ]);
+    const factors = (f?.totp || []).filter((x) => x.status === "verified");
+    return {
+      required: !!cfg?.require_mfa,
+      current: aal?.currentLevel,
+      factors,
+      needVerify: aal?.nextLevel === "aal2" && aal?.currentLevel !== "aal2",
+      needEnroll: !!cfg?.require_mfa && !factors.length,
+    };
+  },
+  async mfaEnroll() {
+    // 途中で止めた未確認の登録が残っていると新規登録できないため削除
+    const { data: f } = await supabase.auth.mfa.listFactors();
+    for (const x of f?.all || []) if (x.status !== "verified") await supabase.auth.mfa.unenroll({ factorId: x.id });
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `shift-app-${Date.now()}` });
+    if (error) throw new Error(friendly(error));
+    return { factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret };
+  },
+  async mfaVerify(factorId, code) {
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: String(code).trim() });
+    if (error) throw new Error(/invalid|code/i.test(error.message) ? "確認コードが違います。アプリに表示されている6桁の数字を入力してください。" : friendly(error));
+  },
+  async mfaUnenroll(factorId) {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) throw new Error(friendly(error));
+  },
+  async setRequireMfa(on) { await rpc("set_require_mfa", { p_on: on }); },
   membersSupported: true,
   async listMembers(fid) { return (await rpc("list_members", { p_facility_id: fid })) || []; },
   async addMember(fid, email) { await rpc("add_member", { p_facility_id: fid, p_email: email }); },
@@ -394,7 +548,7 @@ export function useFacilityStore(backend, facilityId) {
 // =====================================================================
 // スタッフ：シフト希望入力（ログイン不要）
 // =====================================================================
-export function usePortal(backend, code, staffId) {
+export function usePortal(backend, code, staffId, pin) {
   const [base, setBase] = useState(null);
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
@@ -412,10 +566,23 @@ export function usePortal(backend, code, staffId) {
       setLoading(false);
     }
   }, [backend, code]);
+  const [pinError, setPinError] = useState(null);
+  const [verified, setVerified] = useState(false);
+  const needPin = base ? base.setting?.[0]?.requirePin !== false : true;
   const reloadRequests = useCallback(async () => {
+    setVerified(false);
     if (!backend || !code || !staffId) return setRequests([]);
-    try { setRequests(await backend.portalRequests(code, staffId)); } catch (e) { setError(e.message); }
-  }, [backend, code, staffId]);
+    if (!base) return; // 施設情報の読み込み待ち
+    if (needPin && !pin) { setRequests([]); setPinError(null); return; } // PIN未入力のうちは問い合わせない
+    try {
+      setRequests(await backend.portalRequests(code, staffId, pin));
+      setPinError(null);
+      setVerified(true);
+    } catch (e) {
+      setRequests([]);
+      if (e instanceof PinError) setPinError(e); else setError(e.message);
+    }
+  }, [backend, code, staffId, pin, base, needPin]);
 
   useEffect(() => { setLoading(true); reloadBase(); }, [reloadBase]);
   useEffect(() => { reloadRequests(); }, [reloadRequests]);
@@ -426,12 +593,15 @@ export function usePortal(backend, code, staffId) {
     data,
     error,
     loading,
+    pinError,
+    verified,
+    retry: reloadRequests,
     async submitRequests(recs, replaceIds) {
-      await backend.portalSubmit(code, staffId, recs, replaceIds);
+      await backend.portalSubmit(code, staffId, pin, recs, replaceIds);
       await reloadRequests();
     },
     async deleteRequest(id) {
-      await backend.portalDelete(code, staffId, id);
+      await backend.portalDelete(code, staffId, pin, id);
       await reloadRequests();
     },
   };
@@ -454,6 +624,8 @@ export const DEFAULT_SETTINGS = {
   autoBreak: true,
   closingDay: 0, // 給与締め日（0=末日）
   taskLabels: ["受付", "レジ", "清掃", "監視", "指導", "事務", "会議"],
+  requirePin: true, // スタッフの希望入力に個人PINを必須にする
+  lastBackupAt: "",
 };
 export function getSettings(data, facility) {
   const s = data.setting[0] || {};

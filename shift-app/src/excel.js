@@ -296,11 +296,11 @@ export async function exportPayroll({ data, settings, depts, from, to, label }) 
   // 部門別
   const bd = aggregate(rows, (r) => r.deptId);
   const ws2 = sheet("部門別", "給与集計（部門別）",
-    ["部門", "延べ人日", "実働(h)", "基本給", "割増", "交通費", "支給合計"],
-    depts.map((d) => { const a = bd[d.id]; return [d.name, a?.days.size || 0, h(a?.workMin || 0), a?.basePay || 0, (a?.otPay || 0) + (a?.nightPay || 0), a?.transport || 0, a?.total || 0]; }),
-    tot ? ["合計", tot.days.size, h(tot.workMin), tot.basePay, tot.otPay + tot.nightPay, tot.transport, tot.total] : null,
-    [16, 10, 10, 12, 12, 12, 14]);
-  fmt(ws2, [4, 5, 6, 7], "#,##0");
+    ["部門", "実働(h)", "基本給", "割増", "交通費", "支給合計"],
+    depts.map((d) => { const a = bd[d.id]; return [d.name, h(a?.workMin || 0), a?.basePay || 0, (a?.otPay || 0) + (a?.nightPay || 0), a?.transport || 0, a?.total || 0]; }),
+    tot ? ["合計", h(tot.workMin), tot.basePay, tot.otPay + tot.nightPay, tot.transport, tot.total] : null,
+    [16, 10, 12, 12, 12, 14]);
+  fmt(ws2, [3, 4, 5, 6], "#,##0");
 
   // 日毎×部門
   const bdd = aggregate(rows, (r) => `${r.date}|${r.deptId}`);
@@ -333,11 +333,11 @@ export async function exportPayroll({ data, settings, depts, from, to, label }) 
     const bm = aggregate(rows, (r) => payMonthOf(r.date, settings.closingDay));
     const bmd = aggregate(rows, (r) => `${payMonthOf(r.date, settings.closingDay)}|${r.deptId}`);
     const ws5 = sheet("月別", "人件費（月別・部門別）",
-      ["給与月", ...depts.map((d) => d.name), "延べ人日", "実働(h)", "月計"],
-      months.map((m) => [fmtMonth(m), ...depts.map((dp) => bmd[`${m}|${dp.id}`]?.total || 0), bm[m]?.days.size || 0, h(bm[m]?.workMin || 0), bm[m]?.total || 0]),
-      ["合計", ...depts.map((d) => bd[d.id]?.total || 0), tot?.days.size || 0, h(tot?.workMin || 0), tot?.total || 0],
-      [12, ...depts.map(() => 12), 9, 9, 12]);
-    fmt(ws5, [...depts.map((_, i) => i + 2), depts.length + 4], "#,##0");
+      ["給与月", ...depts.map((d) => d.name), "実働(h)", "月計"],
+      months.map((m) => [fmtMonth(m), ...depts.map((dp) => bmd[`${m}|${dp.id}`]?.total || 0), h(bm[m]?.workMin || 0), bm[m]?.total || 0]),
+      ["合計", ...depts.map((d) => bd[d.id]?.total || 0), h(tot?.workMin || 0), tot?.total || 0],
+      [12, ...depts.map(() => 12), 9, 12]);
+    fmt(ws5, [...depts.map((_, i) => i + 2), depts.length + 3], "#,##0");
   }
   await download(wb, `給与集計_${from}_${to}.xlsx`);
 }

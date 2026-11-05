@@ -97,7 +97,7 @@ export default function Payroll({ store, settings, depts, ctx }) {
         <Kpi label={`${label} 支給総額`} value={yen(total?.total)} />
         <Kpi label="賃金" value={yen(total?.wagePay)} sub={`うち割増 ${yen((total?.otPay || 0) + (total?.nightPay || 0))}`} />
         <Kpi label="交通費" value={yen(total?.transport)} />
-        <Kpi label="総労働時間" value={hours(total?.workMin)} sub={`延べ ${total?.days.size || 0}人日`} />
+        <Kpi label="総労働時間" value={hours(total?.workMin)} />
       </div>
 
       {curView === "staff" && (
@@ -125,21 +125,21 @@ export default function Payroll({ store, settings, depts, ctx }) {
       {curView === "dept" && (
         <div className="card scroll-x">
           <table className="tbl">
-            <thead><tr><th>部門</th><th className="r">延べ人日</th><th className="r">実働</th><th className="r">基本給</th><th className="r">割増</th><th className="r">交通費</th><th className="r">支給合計</th><th className="r">構成比</th></tr></thead>
+            <thead><tr><th>部門</th><th className="r">実働</th><th className="r">基本給</th><th className="r">割増</th><th className="r">交通費</th><th className="r">支給合計</th><th className="r">構成比</th></tr></thead>
             <tbody>
               {shownDepts.map((d) => {
                 const a = byDept[d.id];
                 return (
                   <tr key={d.id}>
                     <td><span className="dept-dot" style={{ background: d.color }} />{d.name}</td>
-                    <td className="r">{a?.days.size || 0}</td><td className="r">{hours(a?.workMin)}</td><td className="r">{yen(a?.basePay)}</td>
+                    <td className="r">{hours(a?.workMin)}</td><td className="r">{yen(a?.basePay)}</td>
                     <td className="r">{yen((a?.otPay || 0) + (a?.nightPay || 0))}</td><td className="r">{yen(a?.transport)}</td><td className="r"><b>{yen(a?.total)}</b></td>
                     <td className="r">{(((a?.total || 0) / grand) * 100).toFixed(1)}%</td>
                   </tr>
                 );
               })}
             </tbody>
-            {total && <tfoot><tr><th>合計</th><td className="r">{total.days.size}</td><td className="r">{hours(total.workMin)}</td><td className="r">{yen(total.basePay)}</td><td className="r">{yen(total.otPay + total.nightPay)}</td><td className="r">{yen(total.transport)}</td><td className="r"><b>{yen(total.total)}</b></td><td /></tr></tfoot>}
+            {total && <tfoot><tr><th>合計</th><td className="r">{hours(total.workMin)}</td><td className="r">{yen(total.basePay)}</td><td className="r">{yen(total.otPay + total.nightPay)}</td><td className="r">{yen(total.transport)}</td><td className="r"><b>{yen(total.total)}</b></td><td /></tr></tfoot>}
           </table>
         </div>
       )}
@@ -147,19 +147,18 @@ export default function Payroll({ store, settings, depts, ctx }) {
       {curView === "monthly" && (
         <div className="card scroll-x">
           <table className="tbl compact">
-            <thead><tr><th>給与月</th>{shownDepts.map((d) => <th key={d.id} className="r">{d.name}</th>)}<th className="r">延べ人日</th><th className="r">実働</th><th className="r">月計</th></tr></thead>
+            <thead><tr><th>給与月</th>{shownDepts.map((d) => <th key={d.id} className="r">{d.name}</th>)}<th className="r">実働</th><th className="r">月計</th></tr></thead>
             <tbody>
               {months.map((m) => (
                 <tr key={m}>
                   <td className="nowrap">{fmtMonth(m)}</td>
                   {shownDepts.map((dp) => <td key={dp.id} className="r">{byMonthDept[`${m}|${dp.id}`] ? yen(byMonthDept[`${m}|${dp.id}`].total) : ""}</td>)}
-                  <td className="r">{byMonth[m]?.days.size || ""}</td>
                   <td className="r">{byMonth[m] ? hours(byMonth[m].workMin) : ""}</td>
                   <td className="r"><b>{byMonth[m] ? yen(byMonth[m].total) : ""}</b></td>
                 </tr>
               ))}
             </tbody>
-            {total && <tfoot><tr><th>合計</th>{shownDepts.map((d) => <td key={d.id} className="r">{yen(aggregate(rows.filter((r) => r.deptId === d.id), () => "t").t?.total)}</td>)}<td className="r">{total.days.size}</td><td className="r">{hours(total.workMin)}</td><td className="r"><b>{yen(total.total)}</b></td></tr></tfoot>}
+            {total && <tfoot><tr><th>合計</th>{shownDepts.map((d) => <td key={d.id} className="r">{yen(aggregate(rows.filter((r) => r.deptId === d.id), () => "t").t?.total)}</td>)}<td className="r">{hours(total.workMin)}</td><td className="r"><b>{yen(total.total)}</b></td></tr></tfoot>}
           </table>
         </div>
       )}

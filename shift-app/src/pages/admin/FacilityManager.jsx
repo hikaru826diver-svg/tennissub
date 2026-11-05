@@ -165,7 +165,6 @@ function SummaryCard({ backend, facilities }) {
   };
   useEffect(() => { setRows(null); }, [month, facilities]);
   const sum = (k) => (rows || []).reduce((a, r) => a + (r.t?.[k] || 0), 0);
-  const days = (rows || []).reduce((a, r) => a + (r.t?.days.size || 0), 0);
   return (
     <div className="card">
       <h3>全施設の人件費集計</h3>
@@ -176,16 +175,16 @@ function SummaryCard({ backend, facilities }) {
       {rows && (
         <div className="scroll-x" style={{ marginTop: 10 }}>
           <table className="tbl">
-            <thead><tr><th>施設</th><th>対象期間</th><th className="r">延べ人日</th><th className="r">実働</th><th className="r">賃金</th><th className="r">交通費</th><th className="r">支給総額</th></tr></thead>
+            <thead><tr><th>施設</th><th>対象期間</th><th className="r">実働</th><th className="r">賃金</th><th className="r">交通費</th><th className="r">支給総額</th></tr></thead>
             <tbody>
               {rows.map(({ f, p, t }) => (
                 <tr key={f.id}>
                   <td>{f.name}</td><td className="small">{fmtPeriod(p.from, p.to)}</td>
-                  <td className="r">{t?.days.size || 0}</td><td className="r">{hours(t?.workMin)}</td><td className="r">{yen(t?.wagePay)}</td><td className="r">{yen(t?.transport)}</td><td className="r"><b>{yen(t?.total)}</b></td>
+                  <td className="r">{hours(t?.workMin)}</td><td className="r">{yen(t?.wagePay)}</td><td className="r">{yen(t?.transport)}</td><td className="r"><b>{yen(t?.total)}</b></td>
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr><th colSpan={2}>合計（{fmtMonth(month)}分）</th><td className="r">{days}</td><td className="r">{hours(sum("workMin"))}</td><td className="r">{yen(sum("wagePay"))}</td><td className="r">{yen(sum("transport"))}</td><td className="r"><b>{yen(sum("total"))}</b></td></tr></tfoot>
+            <tfoot><tr><th colSpan={2}>合計（{fmtMonth(month)}分）</th><td className="r">{hours(sum("workMin"))}</td><td className="r">{yen(sum("wagePay"))}</td><td className="r">{yen(sum("transport"))}</td><td className="r"><b>{yen(sum("total"))}</b></td></tr></tfoot>
           </table>
         </div>
       )}

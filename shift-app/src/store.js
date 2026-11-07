@@ -12,7 +12,43 @@ const TABLE = "shift_records";
 export const KINDS = ["department", "staff", "request", "shift", "setting", "roster"];
 // roster: 部門×月ごとに手動追加したスタッフ { id:"deptId|YYYY-MM", deptId, month, staffIds:[] }
 
-export const supabase = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY) : null;
+export let supabase = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY) : null;
+/** テスト用：Supabase クライアントを差し替える */
+export function __setSupabaseForTest(client) { supabase = client; }
+
+// ---- 通信量を抑えるための設定 ----
+export const DATED_KINDS = ["request", "shift"]; // 日付を持つデータ（期間を絞って読み込む）
+export const WINDOW_MONTHS = 3;                  // 最初に読み込む範囲：今月の何か月前から
+export const FULL_REFRESH_MS = 30 * 60000;       // 念のための全体の読み直し間隔
+const SYNC_OVERLAP_MS = 60000;                   // 差分取得の重なり（取りこぼし防止）
+/** 最初に読み込む期間の開始日（今月のNか月前の1日） */
+export function windowStart(now = new Date(), months = WINDOW_MONTHS) {
+  const d = new Date(now.getFullYear(), now.getMonth() - months, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+/** 差分（追加・更新・削除）を画面のデータに反映する */
+export function applyChanges(data, upserts, deletes) {
+  if (!upserts.length && !deletes.length) return data;
+  const next = { ...data };
+  const del = new Set(deletes.map((d) => d.id));
+  const byKind = {};
+  upserts.forEach((r) => (byKind[r.kind] ||= []).push(r.rec));
+  for (const k of KINDS) {
+    const up = byKind[k] || [];
+    const touchesDel = next[k].some((r) => del.has(r.id));
+    if (!up.length && !touchesDel) continue;
+    const map = new Map(next[k].filter((r) => !del.has(r.id)).map((r) => [r.id, r]));
+    up.forEach((r) => { if (!del.has(r.id)) map.set(r.id, r); });
+    next[k] = [...map.values()];
+  }
+  return next;
+}
+/** 2つの読み込み結果を合わせる（同じIDは後者を優先） */
+function mergeLoaded(a, b) {
+  const out = empty();
+  for (const k of KINDS) out[k] = [...new Map([...(a[k] || []), ...(b[k] || [])].map((r) => [r.id, r])).values()];
+  return out;
+}
 const empty = () => KINDS.reduce((o, k) => ({ ...o, [k]: [] }), {});
 
 /** PIN 関連のエラー（画面で個別に案内する） */
@@ -187,7 +223,12 @@ const local = {
     lsSave(all);
   },
   // --- 施設データ（管理者） ---
-  async loadFacility(fid) { return pickRecords(lsLoad(), fid); },
+  async loadFacility(fid, { from, to } = {}) {
+    const d = pickRecords(lsLoad(), fid);
+    for (const k of DATED_KINDS) d[k] = d[k].filter((r) => (!from || r.date >= from) && (!to || r.date <= to));
+    return d;
+  },
+  async hasStaffShifts(fid, staffId) { return pickRecords(lsLoad(), fid).shift.some((x) => x.staffId === staffId); },
   async upsert(fid, kind, recs) {
     const all = lsLoad();
     all.records[kind] ||= {};
@@ -363,16 +404,58 @@ const remote = {
     const { error } = await supabase.from("facilities").delete().eq("id", id);
     if (error) throw new Error(friendly(error));
   },
-  async loadFacility(fid) {
+  /**
+   * 施設のデータを読み込む。from/to を指定すると、シフト希望・シフトはその日付範囲だけを読む
+   * （部門・スタッフ・設定などは常にすべて）。戻り値の cursor は差分取得の起点（サーバー時刻）
+   */
+  async loadFacility(fid, { from, to } = {}) {
     const out = empty();
+    let cursor = null;
     const pageSize = 1000;
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase.from(TABLE).select("id,kind,data").eq("facility_id", fid).range(from, from + pageSize - 1);
-      if (error) throw new Error(friendly(error));
-      data.forEach((r) => out[r.kind]?.push({ ...r.data, id: r.id, facilityId: fid }));
-      if (data.length < pageSize) break;
-    }
+    const pull = async (build) => {
+      for (let p = 0; ; p += pageSize) {
+        const { data, error } = await build(supabase.from(TABLE).select("id,kind,data,updated_at").eq("facility_id", fid)).order("id").range(p, p + pageSize - 1);
+        if (error) throw new Error(friendly(error));
+        data.forEach((r) => {
+          out[r.kind]?.push({ ...r.data, id: r.id, facilityId: fid });
+          if (!cursor || r.updated_at > cursor) cursor = r.updated_at;
+        });
+        if (data.length < pageSize) break;
+      }
+    };
+    await pull((q) => q.not("kind", "in", `(${DATED_KINDS.join(",")})`));
+    await pull((q) => {
+      q = q.in("kind", DATED_KINDS);
+      if (from) q = q.gte("data->>date", from);
+      if (to) q = q.lte("data->>date", to);
+      return q;
+    });
+    Object.defineProperty(out, "cursor", { value: cursor, enumerable: false });
     return out;
+  },
+  /** since 以降に変更・削除されたデータだけを取得（通信量の節約） */
+  async loadChanges(fid, since) {
+    const [{ data: rows, error: e1 }, { data: dels, error: e2 }] = await Promise.all([
+      supabase.from(TABLE).select("id,kind,data,updated_at").eq("facility_id", fid).gt("updated_at", since).order("updated_at").limit(5000),
+      supabase.from("audit_logs").select("record_id,kind,at").eq("facility_id", fid).eq("action", "delete").gt("at", since).order("at").limit(5000),
+    ]);
+    if (e1 || e2) throw new Error(friendly(e1 || e2));
+    let cursor = since;
+    const upserts = rows.map((r) => {
+      if (r.updated_at > cursor) cursor = r.updated_at;
+      return { kind: r.kind, rec: { ...r.data, id: r.id, facilityId: fid } };
+    });
+    const deletes = dels.filter((d) => KINDS.includes(d.kind)).map((d) => {
+      if (d.at > cursor) cursor = d.at;
+      return { id: d.record_id, kind: d.kind };
+    });
+    return { upserts, deletes, cursor, truncated: rows.length >= 5000 || dels.length >= 5000 };
+  },
+  /** そのスタッフに過去を含めてシフト実績があるか */
+  async hasStaffShifts(fid, staffId) {
+    const { data, error } = await supabase.from(TABLE).select("id").eq("facility_id", fid).eq("kind", "shift").eq("data->>staffId", staffId).limit(1);
+    if (error) throw new Error(friendly(error));
+    return data.length > 0;
   },
   async upsert(fid, kind, recs) {
     if (!recs.length) return;
@@ -486,27 +569,72 @@ export function useFacilityStore(backend, facilityId) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const busy = useRef(0);
+  const cursor = useRef(null);      // 差分取得の起点（サーバー時刻）
+  const loadedFrom = useRef(null);  // シフト希望・シフトを読み込み済みの開始日
+  const lastFull = useRef(0);
+  const incremental = !!backend?.loadChanges;
 
+  /** 全体の読み直し（読み込み済みの期間内） */
   const reload = useCallback(async () => {
     if (!backend || !facilityId) return;
     try {
-      const all = await backend.loadFacility(facilityId);
-      if (busy.current === 0) setData(all);
+      const from = incremental ? (loadedFrom.current ||= windowStart()) : undefined;
+      const all = await backend.loadFacility(facilityId, { from });
+      if (busy.current === 0) {
+        setData(all);
+        cursor.current = all.cursor || new Date(Date.now() - SYNC_OVERLAP_MS).toISOString();
+        lastFull.current = Date.now();
+      }
       setError(null);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [backend, facilityId]);
+  }, [backend, facilityId, incremental]);
+
+  /** 定期確認：前回から変わった分だけを取得 */
+  const sync = useCallback(async () => {
+    if (!incremental || !cursor.current || Date.now() - lastFull.current > FULL_REFRESH_MS) return reload();
+    if (busy.current) return; // 保存中は次回に回す
+    try {
+      const since = new Date(Date.parse(cursor.current) - SYNC_OVERLAP_MS).toISOString();
+      const ch = await backend.loadChanges(facilityId, since);
+      if (ch.truncated) return reload();
+      if (busy.current) return;
+      setData((d) => applyChanges(d, ch.upserts, ch.deletes));
+      if (ch.cursor > cursor.current) cursor.current = ch.cursor;
+      setError(null);
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  }, [backend, facilityId, incremental, reload]);
+
+  /** 読み込み済みより前の期間が必要になったときに追加で読む（例：過去の月の給与計算） */
+  const ensureRange = useCallback(async (from) => {
+    if (!incremental || !from || !loadedFrom.current || from >= loadedFrom.current) return;
+    const until = loadedFrom.current;
+    loadedFrom.current = from;
+    try {
+      const older = await backend.loadFacility(facilityId, { from, to: until });
+      setData((d) => mergeLoaded(older, d));
+    } catch (e) {
+      loadedFrom.current = until;
+      setError(e.message || String(e));
+    }
+  }, [backend, facilityId, incremental]);
 
   useEffect(() => {
     setLoading(true);
     setData(empty());
+    cursor.current = null;
+    loadedFrom.current = null;
     reload();
-    const t = setInterval(() => document.visibilityState === "visible" && reload(), POLL_MS);
-    return () => clearInterval(t);
-  }, [reload]);
+    const t = setInterval(() => document.visibilityState === "visible" && sync(), POLL_MS);
+    const onVis = () => document.visibilityState === "visible" && sync();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVis); };
+  }, [reload, sync]);
 
   /** 楽観的更新 → 保存 */
   const save = useCallback(async (kind, recs) => {
@@ -544,7 +672,7 @@ export function useFacilityStore(backend, facilityId) {
     }
   }, [backend, facilityId]);
 
-  return { data, error, loading, reload, save, remove, facilityId };
+  return { data, error, loading, reload, save, remove, facilityId, ensureRange };
 }
 
 // =====================================================================

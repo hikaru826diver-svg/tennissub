@@ -39,6 +39,20 @@ create table if not exists public.shift_records (
 );
 alter table public.shift_records add column if not exists facility_id text references public.facilities (id) on delete cascade;
 create index if not exists shift_records_facility_kind_idx on public.shift_records (facility_id, kind);
+-- 通信量を抑えるための索引（差分の取得・日付範囲での取得）
+create index if not exists shift_records_facility_updated_idx on public.shift_records (facility_id, updated_at);
+create index if not exists shift_records_facility_kind_date_idx on public.shift_records (facility_id, kind, (data->>'date'));
+
+-- 更新日時はサーバーの時刻で記録する（端末の時計のずれに影響されないように）
+create or replace function public.touch_updated_at() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists shift_records_touch on public.shift_records;
+create trigger shift_records_touch before insert or update on public.shift_records
+  for each row execute function public.touch_updated_at();
 
 -- スタッフの個人PIN（ハッシュのみ保存。管理者も元のPINは見られない）
 create schema if not exists extensions;
@@ -66,6 +80,7 @@ create table if not exists public.audit_logs (
   after       jsonb
 );
 create index if not exists audit_logs_facility_at_idx on public.audit_logs (facility_id, at desc);
+create index if not exists audit_logs_facility_deletes_idx on public.audit_logs (facility_id, at) where action = 'delete';
 
 -- アプリ全体の設定（1行のみ）
 create table if not exists public.app_config (

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addMonths, aggregate, payMonthOf, calcPayroll, datesBetween, fmtDate, fmtMonth, fmtPeriod, hours, payPeriod, sortStaff, thisMonth, weekdayOf, yen } from "../../utils.js";
 import { MonthInput } from "../../components.jsx";
 import { exportPayroll } from "../../excel.js";
@@ -14,6 +14,8 @@ export default function Payroll({ store, settings, depts, ctx }) {
   const period = mode === "month" ? payPeriod(ctx.month, closing) : range;
   const valid = period.from && period.to && period.from <= period.to;
   const dates = useMemo(() => (valid ? datesBetween(period.from, period.to) : []), [period.from, period.to, valid]);
+  // 読み込み済みより前の期間を選んだときは、その期間のデータを追加で読み込む
+  useEffect(() => { if (valid) store.ensureRange?.(period.from); }, [period.from, valid]); // eslint-disable-line
   const title = mode === "month" ? `${fmtMonth(ctx.month)}分` : "期間";
   const label = `${title}（${valid ? fmtPeriod(period.from, period.to) : "-"}）`;
 

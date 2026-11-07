@@ -151,9 +151,10 @@ function SummaryCard({ backend, facilities }) {
     try {
       const out = [];
       for (const f of facilities) {
-        const d = await backend.loadFacility(f.id);
-        const st = getSettings(d, f);
+        const base = await backend.loadFacility(f.id, { from: "9999-12-31" }); // 設定・スタッフだけ（シフトは読まない）
+        const st = getSettings(base, f);
         const p = payPeriod(month, st.closingDay);
+        const d = await backend.loadFacility(f.id, { from: p.from, to: p.to }); // 対象期間のシフトだけ
         const staffMap = Object.fromEntries(d.staff.map((s) => [s.id, s]));
         const pay = calcPayroll(d.shift.filter((s) => s.date >= p.from && s.date <= p.to), staffMap, st);
         out.push({ f, p, t: aggregate(pay, () => "t").t });

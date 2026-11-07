@@ -106,8 +106,10 @@ export default function StaffMaster({ store, settings, depts, facility, backend 
     setPinMsg(`${st.name} さんのPINを設定しました。本人に伝えてください。`);
     loadPins();
   };
-  const del = (s) => {
-    const used = data.shift.some((x) => x.staffId === s.id);
+  const del = async (s) => {
+    // 画面に読み込んでいない過去のシフトも含めて確認する
+    let used = data.shift.some((x) => x.staffId === s.id);
+    if (!used) { try { used = await backend.hasStaffShifts(facility.id, s.id); } catch { used = true; } }
     if (used) {
       if (window.confirm(`${s.name} さんにはシフト実績があるため削除せず「退職（無効）」にします。よろしいですか？`)) save("staff", { ...s, active: false });
       return;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { thisMonth } from "../../utils.js";
+import { addMonths, thisMonth } from "../../utils.js";
 import { getSettings, lastAdminFacility, useFacilityStore } from "../../store.js";
 import StaffMaster from "./StaffMaster.jsx";
 import DeptMaster from "./DeptMaster.jsx";
@@ -136,6 +136,8 @@ function FacilityWorkspace({ backend, facility, sub, isHq, onTitle }) {
   const month = ctx.month || settings.collection.month || thisMonth();
   const deptId = ctx.deptId || depts[0]?.id || "";
   const shared = { ...ctx, month, deptId, set: (p) => setCtx((c) => ({ ...c, ...p })) };
+  // 過去の月を開いたときは、その月（と前月）のデータを追加で読み込む
+  useEffect(() => { store.ensureRange(`${addMonths(month, -1)}-01`); }, [month, store.ensureRange]); // eslint-disable-line
 
   const props = { store, settings, depts, ctx: shared, facility, backend };
   const page = {

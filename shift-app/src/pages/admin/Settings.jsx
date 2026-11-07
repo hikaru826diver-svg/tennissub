@@ -43,7 +43,10 @@ export default function Settings({ store, settings, facility, backend }) {
   };
 
   const backup = async () => {
-    const blob = new Blob([JSON.stringify({ facility, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: "application/json" });
+    // 画面には直近の期間だけを読み込んでいるため、バックアップは全期間を改めて取得する
+    let full;
+    try { full = await backend.loadFacility(facility.id); } catch (e) { return alert(`バックアップ用のデータを取得できませんでした：${e.message}`); }
+    const blob = new Blob([JSON.stringify({ facility, exportedAt: new Date().toISOString(), ...full }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `shift-backup-${facility.code}-${new Date().toISOString().slice(0, 10)}.json`;

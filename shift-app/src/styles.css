@@ -303,3 +303,7 @@ select.time { padding: 5px 4px; }
 .home-logo { grid-column: 1 / -1; text-align: center; margin-bottom: 4px; }
 .home-logo img { height: 64px; width: auto; max-width: 100%; }
 .login-logo { display: block; height: 40px; width: auto; margin: 0 auto 4px; }
+
+/* 管理者ログイン：見出しと「本部としてログイン」を中央揃え */
+.login-title { text-align: center; }
+.login .login-hq { justify-content: center; }

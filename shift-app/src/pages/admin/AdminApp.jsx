@@ -197,10 +197,10 @@ function AdminLogin({ backend, onLogin }) {
     <main className="page narrow">
       <form className="card login" onSubmit={submit}>
         <img className="login-logo" src={logoUrl} alt="HOS" />
-        <h2>管理者ログイン</h2>
+        <h2 className="login-title">管理者ログイン</h2>
         {isLocal ? (
           <>
-            <label className="inline"><input id="login-hq" type="checkbox" checked={f.hq} onChange={(e) => setF({ ...f, hq: e.target.checked })} />本部としてログイン（全施設を管理）</label>
+            <label className="inline login-hq"><input id="login-hq" type="checkbox" checked={f.hq} onChange={(e) => setF({ ...f, hq: e.target.checked })} />本部としてログイン（全施設を管理）</label>
             {!f.hq && (
               <label>施設
                 <select id="login-facility" value={f.facilityId} onChange={(e) => setF({ ...f, facilityId: e.target.value })}>

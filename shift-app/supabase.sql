@@ -87,6 +87,7 @@ create table if not exists public.app_config (
   id          int primary key default 1 check (id = 1),
   require_mfa boolean not null default false
 );
+alter table public.app_config add column if not exists audit_retention_years int not null default 3 check (audit_retention_years between 1 and 10);
 insert into public.app_config (id) values (1) on conflict do nothing;
 
 -- ---------- 権限チェック用の関数 ----------
@@ -162,13 +163,54 @@ language sql stable security definer set search_path = public, auth as $$
                   'system');
 $$;
 
+-- 記録する内容を軽くする（容量の節約）
+--   追加：だれの・いつの・何時から何時か など、内容がわかる項目だけ
+--   変更：上の項目＋実際に変わった項目だけ（変更前・変更後）
+--   削除：元に戻す手がかりとして、削除前の内容をすべて
+create or replace function public.audit_slim(p_old jsonb, p_new jsonb, out o_before jsonb, out o_after jsonb)
+language plpgsql immutable as $$
+declare
+  ident text[] := array['staffId', 'deptId', 'date', 'start', 'end', 'allDay', 'name', 'month', 'wage', 'category'];
+  skip  text[] := array['id', 'facilityId', 'updated_at'];
+begin
+  if p_old is null then
+    select coalesce(jsonb_object_agg(k, p_new -> k), '{}') into o_after
+      from jsonb_object_keys(p_new) as t(k) where k = any (ident);
+    return;
+  end if;
+  if p_new is null then
+    o_before := p_old - skip;
+    return;
+  end if;
+  select jsonb_strip_nulls(coalesce(jsonb_object_agg(k, p_old -> k), '{}')),
+         jsonb_strip_nulls(coalesce(jsonb_object_agg(k, p_new -> k), '{}'))
+    into o_before, o_after
+    from jsonb_object_keys(p_old || p_new) as t(k)
+   where not (k = any (skip)) and (k = any (ident) or (p_old -> k) is distinct from (p_new -> k));
+end $$;
+
+-- 保存期間（app_config.audit_retention_years、標準3年）を過ぎた記録を削除する
+create or replace function public.audit_purge() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from audit_logs
+   where at < now() - make_interval(years => coalesce((select audit_retention_years from app_config where id = 1), 3));
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
 create or replace function public.audit_shift_records() returns trigger
 language plpgsql security definer set search_path = public as $$
+declare b jsonb; a jsonb;
 begin
   if tg_op = 'UPDATE' and old.data = new.data and old.facility_id is not distinct from new.facility_id then return new; end if;
+  select o_before, o_after into b, a
+    from audit_slim(case when tg_op <> 'INSERT' then old.data end, case when tg_op <> 'DELETE' then new.data end);
   insert into audit_logs (facility_id, actor, action, kind, record_id, before, after)
-  values (coalesce(new.facility_id, old.facility_id), audit_actor(), lower(tg_op), coalesce(new.kind, old.kind), coalesce(new.id, old.id),
-          case when tg_op <> 'INSERT' then old.data end, case when tg_op <> 'DELETE' then new.data end);
+  values (coalesce(new.facility_id, old.facility_id), audit_actor(), lower(tg_op), coalesce(new.kind, old.kind), coalesce(new.id, old.id), b, a);
+  -- 保存期間の自動削除（専用の定期実行の仕組みがなくても動くよう、記録時にまれに実行）
+  if random() < 0.002 then perform audit_purge(); end if;
   return coalesce(new, old);
 end $$;
 drop trigger if exists shift_records_audit on public.shift_records;
@@ -411,7 +453,8 @@ revoke execute on function public.portal_facilities(), public.portal_get(text), 
   public.portal_submit(text, text, text, jsonb, text[]), public.portal_delete(text, text, text, text), public.portal_check_pin(text, text, text),
   public.portal_assert_open(text), public.is_hq(), public.is_member(text), public.mfa_ok(), public.can_manage(text), public.audit_actor(),
   public.list_members(text), public.add_member(text, text), public.remove_member(text, uuid),
-  public.set_staff_pin(text, text, text), public.clear_staff_pin(text, text), public.staff_pin_status(text), public.set_require_mfa(boolean) from public;
+  public.set_staff_pin(text, text, text), public.clear_staff_pin(text, text), public.staff_pin_status(text), public.set_require_mfa(boolean),
+  public.audit_purge(), public.audit_slim(jsonb, jsonb) from public;
 grant execute on function public.portal_facilities(), public.portal_get(text), public.portal_requests(text, text, text),
   public.portal_submit(text, text, text, jsonb, text[]), public.portal_delete(text, text, text, text) to anon, authenticated;
 grant execute on function public.is_hq(), public.is_member(text), public.mfa_ok(), public.can_manage(text),
@@ -425,8 +468,11 @@ grant execute on function public.is_hq(), public.is_member(text), public.mfa_ok(
 --     先に Supabase の「Authentication → Users → Add user」でユーザーを作成してから実行
 -- insert into public.hq_members (user_id) select id from auth.users where email = 'honbu@example.com';
 
--- (2) 操作記録の保存期間：古い記録を削除する場合（例：3年より前）
--- delete from public.audit_logs where at < now() - interval '3 years';
+-- (2) 操作記録の保存期間：標準は3年（期限を過ぎた記録は自動で削除されます）
+--     保存期間を変える場合（例：5年）：
+-- update public.app_config set audit_retention_years = 5 where id = 1;
+--     今すぐ期限切れの記録を削除する場合：
+-- select public.audit_purge();
 
 -- (3) 旧バージョン（単一施設）のデータがある場合：施設を作ってデータを割り当てる
 -- insert into public.facilities (id, name, code) values ('f1', '〇〇体育館', 'f1') on conflict do nothing;

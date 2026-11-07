@@ -161,7 +161,7 @@ HOS シフト作成アプリを、インターネットに公開して本番運�
 | データのバックアップ | 各施設の「回収・各種設定」→「バックアップ」を月1回以上。加えて Supabase の自動バックアップ（有料プラン） |
 | 退職者・異動者 | スタッフ：スタッフマスタで「退職」＋PIN削除／管理者：「管理者」から外し、Supabase のユーザーも削除 |
 | 認証アプリの紛失 | Supabase「Authentication」→「Users」で該当ユーザーの二段階認証（MFA factor）を削除し、再設定してもらう |
-| 操作履歴の保存期間 | `supabase.sql` 末尾の削除用SQLを定期的に実行（例：3年より前を削除） |
+| 操作履歴の保存期間 | 標準3年で自動削除。変更は `supabase.sql` 末尾のSQL（`audit_retention_years`）で |
 
 ### 独自ドメインを使う場合（任意）
 Cloudflare Pages の「カスタムドメイン」から、例 `shift.example.co.jp` を追加できます。追加したら、手順4の Site URL と Redirect URLs も新しいURLに変更してください。

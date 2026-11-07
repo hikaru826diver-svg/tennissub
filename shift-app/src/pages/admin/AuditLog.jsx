@@ -126,7 +126,7 @@ export default function AuditLog({ store, facility, backend, depts }) {
           </tbody>
         </table>
       </div>
-      <p className="small muted">データの追加・変更・削除は自動で記録され、管理者を含め誰も書き換え・削除できません（Supabase運用時）。表示は新しい順に最大1,000件です。</p>
+      <p className="small muted">データの追加・変更・削除は自動で記録され、管理者を含め誰も書き換え・削除できません（Supabase運用時）。記録は変更された項目だけを残し、保存期間は3年です（期間を過ぎた記録は自動で削除されます）。表示は新しい順に最大1,000件です。</p>
     </>
   );
 }

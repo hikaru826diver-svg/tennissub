@@ -372,3 +372,22 @@ export const hm = (min) => {
   const m = Math.round(min || 0);
   return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 };
+
+// ===== 操作履歴を軽くする（データベース側の audit_slim と同じ考え方） =====
+const AUDIT_IDENT = ["staffId", "deptId", "date", "start", "end", "allDay", "name", "month", "wage", "category"];
+const AUDIT_SKIP = ["id", "facilityId", "updated_at"];
+const pickKeys = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined && o[k] !== null).map((k) => [k, o[k]]));
+/**
+ * 追加：内容がわかる項目だけ／変更：その項目＋変わった項目だけ／削除：削除前の内容すべて
+ * @returns { before, after }
+ */
+export function auditSlim(before, after) {
+  if (!before) return { before: null, after: pickKeys(after || {}, AUDIT_IDENT) };
+  if (!after) return { before: Object.fromEntries(Object.entries(before).filter(([k]) => !AUDIT_SKIP.includes(k))), after: null };
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
+    (k) => !AUDIT_SKIP.includes(k) && (AUDIT_IDENT.includes(k) || JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null))
+  );
+  return { before: pickKeys(before, keys), after: pickKeys(after, keys) };
+}
+/** 操作履歴の保存期間（年） */
+export const AUDIT_RETENTION_YEARS = 3;

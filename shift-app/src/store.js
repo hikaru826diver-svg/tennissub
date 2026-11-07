@@ -4,7 +4,7 @@
 // - Supabase 未設定・未セットアップ時：ブラウザの localStorage に保存します（端末間で共有されません）。
 import { createClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { uid } from "./utils.js";
+import { AUDIT_RETENTION_YEARS, auditSlim, uid } from "./utils.js";
 
 const SB_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
@@ -159,7 +159,11 @@ function localActor() {
 }
 function pushAudit(all, entry) {
   all.audit ||= [];
-  all.audit.push({ id: uid(), at: new Date().toISOString(), actor: localActor(), ...entry });
+  const slim = "before" in entry || "after" in entry ? auditSlim(entry.before, entry.after) : {};
+  all.audit.push({ id: uid(), at: new Date().toISOString(), actor: localActor(), ...entry, ...slim });
+  // 保存期間（3年）を過ぎた記録と、件数の上限を超えた古い記録を削除
+  const limit = new Date(Date.now() - AUDIT_RETENTION_YEARS * 365.25 * 86400000).toISOString();
+  all.audit = all.audit.filter((a) => a.at >= limit);
   if (all.audit.length > AUDIT_MAX) all.audit.splice(0, all.audit.length - AUDIT_MAX);
 }
 async function localCheckPin(all, fid, staffId, pin) {
@@ -306,7 +310,7 @@ const local = {
     assertOpen(st.collection);
     await localCheckPin(all, f.id, staffId, pin);
     const actor = `スタッフ本人：${all.records.staff?.[staffId]?.name || ""}`;
-    const log = (e) => { all.audit ||= []; all.audit.push({ id: uid(), at: new Date().toISOString(), actor, facility_id: f.id, kind: "request", ...e }); };
+    const log = (e) => { all.audit ||= []; all.audit.push({ id: uid(), at: new Date().toISOString(), actor, facility_id: f.id, kind: "request", ...e, ...auditSlim(e.before, e.after) }); };
     replaceIds.forEach((id) => {
       const r = all.records.request?.[id];
       if (r && r.facilityId === f.id && r.staffId === staffId) { delete all.records.request[id]; log({ action: "delete", record_id: id, before: r, after: null }); }
@@ -325,7 +329,7 @@ const local = {
     if (f && r && r.facilityId === f.id && r.staffId === staffId) {
       delete all.records.request[id];
       all.audit ||= [];
-      all.audit.push({ id: uid(), at: new Date().toISOString(), actor: `スタッフ本人：${all.records.staff?.[staffId]?.name || ""}`, facility_id: f.id, kind: "request", action: "delete", record_id: id, before: r, after: null });
+      all.audit.push({ id: uid(), at: new Date().toISOString(), actor: `スタッフ本人：${all.records.staff?.[staffId]?.name || ""}`, facility_id: f.id, kind: "request", action: "delete", record_id: id, ...auditSlim(r, null) });
     }
     lsSave(all);
   },

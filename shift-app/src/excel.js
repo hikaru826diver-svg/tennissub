@@ -1,4 +1,5 @@
 // ===== Excel 出力（exceljs を必要時に読み込み） =====
+import logoUrl from "./assets/hos-logo.png";
 import { aggregate, taskSegSlots, breaksText, calcPayroll, datesBetween, payMonthOf, inBreak, taskAt, taskColor, rosterStaff, daysInMonth, fmtDate, fmtMonth, shortTime, sortStaff, toMin, weekdayOf, WEEK } from "./utils.js";
 
 const THIN = { style: "thin", color: { argb: "FFBFBFBF" } };
@@ -17,11 +18,43 @@ const safeSheet = (s) => s.replace(/[\\/?*[\]:]/g, "_").slice(0, 31);
 async function newBook() {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "シフト作成アプリ";
+  wb.creator = "HOS シフト作成アプリ";
   wb.created = new Date();
   return wb;
 }
+// ---------- ロゴ（全シートの右上に配置） ----------
+const LOGO_RATIO = 1405 / 504; // ロゴ画像の横:縦
+let logoCache = null;
+async function logoBase64() {
+  if (logoCache) return logoCache;
+  if (logoUrl.startsWith("data:")) return (logoCache = logoUrl);
+  const buf = await (await fetch(logoUrl)).arrayBuffer();
+  let bin = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return (logoCache = `data:image/png;base64,${btoa(bin)}`);
+}
+async function addLogos(wb) {
+  let base64;
+  try { base64 = await logoBase64(); } catch { return; } // ロゴが読めなくても帳票は出力する
+  const id = wb.addImage({ base64, extension: "png" });
+  const h = 26, w = Math.round(h * LOGO_RATIO);
+  const colPx = (ws, c) => Math.round((ws.getColumn(c).width || 9) * 7 + 5); // Excel の列幅（文字数）→ ピクセルの目安
+  for (const ws of wb.worksheets) {
+    const last = Math.max(ws.columnCount, 1);
+    // 右端の列から、ロゴが収まる幅になるまで左へさかのぼって配置位置を決める
+    let room = 0, c = last;
+    while (c > 1 && room < w + 6) room += colPx(ws, c--);
+    const over = Math.max(0, room - (w + 6)); // 開始列の左端からのずれ（ピクセル）
+    const EMU = 9525; // 1ピクセル = 9525 EMU（Excel の位置指定の単位）
+    ws.addImage(id, { tl: { nativeCol: c, nativeColOff: over * EMU, nativeRow: 0, nativeRowOff: 2 * EMU }, ext: { width: w, height: h }, editAs: "oneCell" });
+    const r1 = ws.getRow(1);
+    r1.height = Math.max(r1.height || 0, 24);
+  }
+}
+
 async function download(wb, name) {
+  await addLogos(wb);
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const a = document.createElement("a");

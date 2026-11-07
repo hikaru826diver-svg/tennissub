@@ -72,9 +72,9 @@ npm run build   # dist/ に本番ビルド
 - ホーム画面から開くとアドレスバーのない画面で起動します。オフライン時も画面は表示されますが、データの読み書きには通信が必要です。
 - スタッフには施設のURLを開いてからホーム画面に追加してもらうと、次回から自分の施設が自動で開きます。
 
-### デプロイ（Vercel の例）
-- Root Directory：`shift-app`
-- Build Command：`npm run build` ／ Output Directory：`dist`
+### 公開（デプロイ）
+GitHub × Cloudflare Pages × Supabase で公開する手順は **[DEPLOY.md](./DEPLOY.md)** を参照してください。
+（Cloudflare Pages の設定：ルートディレクトリ `shift-app`／ビルドコマンド `npm run build`／出力 `dist`。セキュリティヘッダーは `public/_headers` で自動適用）
 
 ### はじめての使い方
 1. 管理者画面にログイン（初期パスコード `admin` → 設定画面で必ず変更）

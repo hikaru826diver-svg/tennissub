@@ -2,7 +2,7 @@
 // - 画面（HTML）はネットワーク優先、通信できない時はキャッシュを表示
 // - JS/CSS/アイコンはキャッシュ優先（ファイル名にハッシュが付くため更新時は新しいファイルになる）
 // - Supabase など他ドメインへの通信（データ）はキャッシュしない
-const CACHE = "shift-app-v1";
+const CACHE = "shift-app-v2"; // アイコン変更に伴い更新
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./manifest.webmanifest", "./icons/icon-192.png"])).then(() => self.skipWaiting()));

@@ -3,6 +3,7 @@ import { facilityCodeFromUrl, lastFacilityCode, resetLocal, useBackend } from ".
 import StaffEntry from "./pages/StaffEntry.jsx";
 import AdminGate from "./pages/admin/AdminApp.jsx";
 import InstallButton from "./InstallButton.jsx";
+import logoUrl from "./assets/hos-logo.png";
 
 function useHash() {
   const [hash, setHash] = useState(window.location.hash || "#");
@@ -56,7 +57,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a href="#" className="brand">📅 {title}</a>
+        <a href="#" className="brand" aria-label={`HOS ${title}`}><img className="brand-logo" src={logoUrl} alt="HOS" /><span className="brand-name">{title}</span></a>
         <nav>
           <a href="#staff" className={route[0] === "staff" ? "active" : ""}>シフト希望入力</a>
           <a href="#admin" className={route[0] === "admin" ? "active" : ""}>管理者</a>
@@ -116,6 +117,7 @@ function FacilityPicker({ backend, onPick }) {
 function Home() {
   return (
     <main className="home">
+      <div className="home-logo"><img src={logoUrl} alt="HOS" /></div>
       <a className="home-card" href="#staff">
         <div className="home-icon">✍️</div>
         <h2>シフト希望入力</h2>

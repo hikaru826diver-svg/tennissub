@@ -9,6 +9,7 @@ import Timetable from "./Timetable.jsx";
 import Payroll from "./Payroll.jsx";
 import Settings from "./Settings.jsx";
 import FacilityManager from "./FacilityManager.jsx";
+import logoUrl from "../../assets/hos-logo.png";
 import AuditLog from "./AuditLog.jsx";
 import { MfaVerify, MfaEnroll, SecurityModal } from "./Security.jsx";
 
@@ -195,6 +196,7 @@ function AdminLogin({ backend, onLogin }) {
   return (
     <main className="page narrow">
       <form className="card login" onSubmit={submit}>
+        <img className="login-logo" src={logoUrl} alt="HOS" />
         <h2>管理者ログイン</h2>
         {isLocal ? (
           <>
